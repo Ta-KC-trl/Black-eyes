@@ -24,22 +24,6 @@ env/
 Thumbs.db
 desktop.ini
 
-# Model weights (use Git LFS or download separately)
-models/*.pt
-*.pt
-
-# Dataset files (rebuild via app)
-dataset/*.pkl
-dataset/*.jpg
-dataset/*.png
-dataset/valid/
-dataset/train/
-dataset/test/
-
-# Training artifacts
-runs/
-*.zip
-
 # Cache
 .cache/
 *.cache
@@ -53,3 +37,7 @@ runs/
 
 # Logs
 *.log
+
+# Training artifacts (not needed at runtime)
+runs/
+*.zip
