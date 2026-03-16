@@ -1,7 +1,5 @@
-opencv-python
-cmake
-pyyaml
-streamlit==1.22.0
-
-face_recognition @ git+https://github.com/thetoby9944/face_recognition
-
+opencv-python>=4.8.0
+numpy>=1.24.0
+pyyaml>=6.0
+streamlit>=1.22.0
+ultralytics>=8.0.0

@@ -1,11 +1,10 @@
-
 PATH:
-  DATASET_DIR: 'dataset/'
-  PKL_PATH: 'dataset/database.pkl'
+  DATASET_DIR: "dataset/"
+  PKL_PATH: "dataset/database.pkl"
 
-INFO:
-  PICTURE_PROMPT: "Upload a picture for recognition"
-  WEBCAM_PROMPT: "Use your webcam for real-time recognition"
+YOLO:
+  MODEL_PATH: "models/best.pt"
 
 DETECTION:
   ANOMALY_TOLERANCE: 0.6
+ 

@@ -1,181 +1,146 @@
-import face_recognition as frg
+"""
+utils.py — Face detection, recognition, and database operations.
+Uses OpenCV Haar cascades + cosine-similarity matching.
+"""
+
 import pickle as pkl
 import os
 import cv2
 import numpy as np
 import yaml
-from collections import defaultdict
-from twilio.rest import Client
-import time
-import requests
-import streamlit as st  # Added for UI alerts
 
-# === CONFIGURATION PATHS ===
-PKL_PATH = r"D:\Black-Eyes-Intruders-detection-system-main\Blackeyes\dataset\database.pkl"
+_BASE = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(_BASE, "config.yaml"), "r") as _f:
+    _cfg = yaml.safe_load(_f)
 
-# Twilio credentials
-account_sid = 'x'
-auth_token = 'x'
-from_number = 'x'
-to_number = 'x'
+PKL_PATH    = os.path.join(_BASE, _cfg["PATH"]["PKL_PATH"])
+DATASET_DIR = os.path.join(_BASE, _cfg["PATH"]["DATASET_DIR"])
 
-client = Client(account_sid, auth_token)
+_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+_face_cascade = cv2.CascadeClassifier(_CASCADE_PATH)
 
-alert_log = {}
-ALERT_INTERVAL = 60  # seconds
+def _detect_faces(gray_img):
+    faces = _face_cascade.detectMultiScale(gray_img, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    return [] if len(faces) == 0 else faces
 
-def send_alert(message):
-    try:
-        msg = client.messages.create(
-            body=message,
-            from_=from_number,
-            to=to_number
-        )
-        print(f"✅ Alert sent: {msg.sid}")
-        return True
-    except Exception as e:
-        print(f"❌ Error sending alert: {e}")
-        return False
+def _get_embedding(rgb_img, x, y, w, h):
+    face = cv2.resize(rgb_img[y:y+h, x:x+w], (64, 64))
+    return face.astype(np.float32).flatten() / 255.0
 
-def get_location():
-    try:
-        res = requests.get("https://ipinfo.io/json", timeout=5)
-        data = res.json()
-        city = data.get("city", "")
-        region = data.get("region", "")
-        country = data.get("country", "")
-        loc = data.get("loc", "")  # lat,long
-        return f"{city}, {region}, {country} (Coordinates: {loc})"
-    except Exception as e:
-        print(f"Location fetch failed: {e}")
-        return "Location unavailable"
+def _cosine_sim(a, b):
+    norm = np.linalg.norm(a) * np.linalg.norm(b)
+    return float(np.dot(a, b) / norm) if norm != 0 else 0.0
 
-def check_and_alert(name):
-    current_time = time.time()
-    if name == 'Unknown':
-        if current_time - alert_log.get(name, 0) > ALERT_INTERVAL:
-            location = get_location()
-            message = f"⚠️ Unknown face detected!\n📍 Location: {location}"
-            message_sent = send_alert(message)
-            if message_sent:
-                alert_log[name] = current_time
-                return True
-            else:
-                return False
-    return None
+def get_database():
+    if not os.path.exists(PKL_PATH):
+        return {}
+    with open(PKL_PATH, "rb") as f:
+        try:
+            return pkl.load(f)
+        except Exception:
+            return {}
 
-def send_anomaly_alert(anomaly_type):
-    location = get_location()
-    message = f"🚨 Anomaly Detected: {anomaly_type}\n📍 Location: {location}"
-    success = send_alert(message)
-    if success:
-        st.success(f"✅ Anomaly alert sent for {anomaly_type}")
-    else:
-        st.error(f"❌ Failed to send anomaly alert for {anomaly_type}")
 
-def get_databse():
-    with open(PKL_PATH, 'rb') as f:
-        database = pkl.load(f)
-    return database
 
-def recognize(image, TOLERANCE):
-    database = get_databse()
-    known_encoding = [database[id]['encoding'] for id in database.keys()]
-    name = 'Unknown'
-    id = 'Unknown'
-    face_locations = frg.face_locations(image)
-    face_encodings = frg.face_encodings(image, face_locations)
-
-    for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-        matches = frg.compare_faces(known_encoding, face_encoding, tolerance=TOLERANCE)
-        distance = frg.face_distance(known_encoding, face_encoding)
-        name = 'Unknown'
-        id = 'Unknown'
-
-        if True in matches:
-            match_index = matches.index(True)
-            name = database[match_index]['name']
-            id = database[match_index]['id']
-            distance = round(distance[match_index], 2)
-            cv2.putText(image, str(distance), (left, top - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
-
-        cv2.rectangle(image, (left, top), (right, bottom), (0, 255, 0), 2)
-        cv2.putText(image, name, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
-
-    return image, name, id
+def _save_database(db):
+    os.makedirs(os.path.dirname(PKL_PATH), exist_ok=True)
+    with open(PKL_PATH, "wb") as f:
+        pkl.dump(db, f)
 
 def isFaceExists(image):
-    face_location = frg.face_locations(image)
-    return len(face_location) > 0
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    return len(_detect_faces(gray)) > 0
 
-def submitNew(name, id, image, old_idx=None):
-    database = get_databse()
+def recognize(image, tolerance=0.5):
+    database = get_database()
+    gray  = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    faces = _detect_faces(gray)
+    name  = person_id = "Unknown"
+    sim_threshold = 1.0 - (tolerance * 0.5)
 
-    if type(image) != np.ndarray:
+    for (x, y, w, h) in faces:
+        embedding = _get_embedding(image, x, y, w, h)
+        name = person_id = "Unknown"
+        best_sim = -1
+
+        for idx, person in database.items():
+            enc = person.get("encoding")
+            if enc is None:
+                continue
+            sim = _cosine_sim(embedding, enc)
+            if sim > best_sim:
+                best_sim = sim
+                if sim >= sim_threshold:
+                    name      = person["name"]
+                    person_id = person["id"]
+
+        color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
+        cv2.rectangle(image, (x, y), (x+w, y+h), color, 2)
+        cv2.putText(image, name, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
+        if name != "Unknown":
+            cv2.putText(image, f"{best_sim:.2f}", (x, y-30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+    return image, name, person_id
+
+def submitNew(name, person_id, image, old_idx=None):
+    database = get_database()
+    if not isinstance(image, np.ndarray):
         image = cv2.imdecode(np.frombuffer(image.read(), np.uint8), 1)
-
-    if not isFaceExists(image):
+    rgb  = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    faces = _detect_faces(gray)
+    if len(faces) == 0:
         return -1
-
-    encoding = frg.face_encodings(image)[0]
-    existing_id = [database[i]['id'] for i in database.keys()]
-
+    x, y, w, h  = faces[0]
+    encoding     = _get_embedding(rgb, x, y, w, h)
+    existing_ids = [database[i]["id"] for i in database]
     if old_idx is not None:
-        new_idx = old_idx
+        idx = old_idx
     else:
-        if id in existing_id:
+        if person_id in existing_ids:
             return 0
-        new_idx = len(database)
-
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    database[new_idx] = {'image': image, 'id': id, 'name': name, 'encoding': encoding}
-
-    with open(PKL_PATH, 'wb') as f:
-        pkl.dump(database, f)
+        idx = len(database)
+    database[idx] = {"image": rgb, "id": person_id, "name": name, "encoding": encoding}
+    _save_database(database)
     return True
 
-def get_info_from_id(id):
-    database = get_databse()
+def get_info_from_id(person_id):
+    database = get_database()
     for idx, person in database.items():
-        if person['id'] == id:
-            name = person['name']
-            image = person['image']
-            return name, image, idx
+        if str(person["id"]) == str(person_id):
+            return person["name"], person["image"], idx
     return None, None, None
 
-def deleteOne(id):
-    database = get_databse()
-    id = str(id)
+def deleteOne(person_id):
+    database = get_database()
     for key, person in list(database.items()):
-        if person['id'] == id:
+        if str(person["id"]) == str(person_id):
             del database[key]
-            break
-    with open(PKL_PATH, 'wb') as f:
-        pkl.dump(database, f)
-    return True
+            _save_database(database)
+            return True
+    return False
 
-# Placeholder for dataset builder (if needed)
 def build_dataset():
-    DATASET_DIR = r"D:\Black-Eyes-Intruders-detection-system-main\Blackeyes\dataset"
-    information = defaultdict(dict)
+    info = {}
     counter = 0
-    for image in os.listdir(DATASET_DIR):
-        image_path = os.path.join(DATASET_DIR, image)
-        image_name = image.split('.')[0]
-        parsed_name = image_name.split('_')
-        person_id = parsed_name[0]
-        person_name = ' '.join(parsed_name[1:])
-        if not image_path.endswith('.jpg'):
+    for fname in os.listdir(DATASET_DIR):
+        if not fname.lower().endswith(".jpg"):
             continue
-        image = frg.load_image_file(image_path)
-        information[counter]['image'] = image
-        information[counter]['id'] = person_id
-        information[counter]['name'] = person_name
-        information[counter]['encoding'] = frg.face_encodings(image)[0]
+        fpath = os.path.join(DATASET_DIR, fname)
+        parts = fname.rsplit(".", 1)[0].split("_")
+        pid   = parts[0]
+        pname = " ".join(parts[1:])
+        img   = cv2.imread(fpath)
+        if img is None:
+            continue
+        rgb  = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+        faces = _detect_faces(gray)
+        if len(faces) == 0:
+            print(f"No face found in {fname}, skipping.")
+            continue
+        x, y, w, h = faces[0]
+        info[counter] = {"image": rgb, "id": pid, "name": pname, "encoding": _get_embedding(rgb, x, y, w, h)}
         counter += 1
-
-    with open(os.path.join(DATASET_DIR, 'database.pkl'), 'wb') as f:
-        pkl.dump(information, f)
-
-if __name__ == "__main__":
-    deleteOne(4)
+    _save_database(info)
+    print(f"Saved {counter} entries.")
