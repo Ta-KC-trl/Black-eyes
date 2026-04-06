@@ -10,27 +10,23 @@ import numpy as np
 import os
 import base64
 import yaml
-from utils import recognize, submitNew, get_info_from_id, deleteOne, get_database
+from utils import recognize, submitNew, get_info_from_id, deleteOne
 
 # ── Paths ───────────────────────────────────────────────────────────────────
-_BASE = os.path.dirname(os.path.abspath(__file__))
-_CONFIG_PATH = os.path.join(_BASE, "config.yaml")
+_BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_CONFIG_PATH = os.path.join(_BASE, "data", "config.yaml")
 
 if not os.path.exists(_CONFIG_PATH):
-    # Fallback/Default config
-    _cfg = {
-        "YOLO": {"MODEL_PATH": "models/best.pt"},
-        "DETECTION": {"FACE_TOLERANCE": 0.4}
-    }
-else:
-    with open(_CONFIG_PATH, "r") as _f:
-        _cfg = yaml.safe_load(_f)
+    # Fallback to root for dev
+    _CONFIG_PATH = os.path.join(_BASE, "config.yaml")
+
+with open(_CONFIG_PATH, "r") as _f:
+    _cfg = yaml.safe_load(_f)
 
 # Use paths from config or defaults
-YOLO_MODEL_PATH  = os.path.join(_BASE, _cfg["YOLO"].get("MODEL_PATH", "models/best.pt"))
-# Ensure assets and sample images path
+YOLO_MODEL_PATH  = os.path.join(_BASE, _cfg["YOLO"].get("MODEL_PATH", "models/yolo11n.pt"))
 ASSETS_DIR       = os.path.join(_BASE, "assets")
-SAMPLE_IMAGE_DIR = os.path.join(_BASE, "Sample_images") # Standard location
+SAMPLE_IMAGE_DIR = os.path.join(ASSETS_DIR, "Sample_images")
 
 st.set_page_config(page_title="Black Eyes", layout="wide", page_icon="👁️",
                    initial_sidebar_state="expanded")
@@ -228,9 +224,10 @@ html, body, [data-testid="stAppViewContainer"] {
 @st.cache_resource
 def load_yolo(path):
     if not os.path.exists(path):
-        # Final fallback to standard nano if everything fails
-        return YOLO("yolov8n.pt")
+        # Fallback to v11 nano if custom model is missing
+        return YOLO("yolo11n.pt")
     m = YOLO(path)
+    # Ensure custom names if needed (standard COCO includes knife at index 43)
     return m
 
 yolo_model = load_yolo(YOLO_MODEL_PATH)
@@ -264,13 +261,12 @@ with st.sidebar:
 
     st.markdown('<div class="nav-section">// settings</div>', unsafe_allow_html=True)
     TOLERANCE = st.slider("Match Tolerance", 0.1, 1.0, _cfg["DETECTION"].get("FACE_TOLERANCE", 0.4), 0.05)
-    ANOMALY_CONF = st.slider("Anomaly Sensitivity", 0.1, 0.9, _cfg["DETECTION"].get("ANOMALY_TOLERANCE", 0.5), 0.05)
     input_src = st.selectbox("Input Source", ["Live Camera", "Upload Image"])
 
     st.markdown("---")
     st.markdown(f"""
         <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#1e3a5f;line-height:2;padding:0 8px">
-        BUILD v3.1.0 (PRODUCTION)<br>ENGINE: YOLOv11 + FACE_RECOG<br>STATUS: { "ACTIVE" if st.session_state.cam_running else "IDLE" }
+        BUILD v3.0.0 (PROFESSIONAL)<br>ENGINE: YOLOv11 + DLib<br>STATUS: { "ACTIVE" if st.session_state.cam_running else "IDLE" }
         </div>
     """, unsafe_allow_html=True)
 
@@ -296,7 +292,7 @@ if page == "TRACKING":
             
             # Run Detections
             out_img, name, _ = recognize(rgb, TOLERANCE)
-            yolo_results = yolo_model(img, conf=ANOMALY_CONF, imgsz=640, verbose=False)
+            yolo_results = yolo_model(img, conf=0.5, verbose=False)
             out_img_bgr  = cv2.cvtColor(out_img, cv2.COLOR_RGB2BGR)
             final_frame  = draw_yolo(out_img_bgr, yolo_results)
             
@@ -351,7 +347,7 @@ if page == "TRACKING":
                 out_img, name, pid = recognize(rgb, TOLERANCE)
 
                 # Anomaly (BGR)
-                results = yolo_model(frame, verbose=False, conf=ANOMALY_CONF, imgsz=640)
+                results = yolo_model(frame, verbose=False, conf=0.5)
                 out_bgr = cv2.cvtColor(out_img, cv2.COLOR_RGB2BGR)
                 final   = draw_yolo(out_bgr, results)
                 final_rgb = cv2.cvtColor(final, cv2.COLOR_BGR2RGB)
@@ -367,16 +363,17 @@ if page == "TRACKING":
                     threats_html = "".join([f'<div class="s-value threat" style="font-size:18px">⚠ {d.upper()}</div>' for d in detections])
                     anomaly_ph.markdown(f'<div class="s-card threat"><div class="s-label">// anomalies</div>{threats_html}</div>', unsafe_allow_html=True)
                 else:
-                    anomaly_ph.markdown('<div class="s-card clear"><div class="s-label">// anomalies</div><div class="s-value clear" style="font-size:18px">✓ CLEAR</div></div>', unsafe_allow_html=True)
+                    anomaly_ph.markdown('<div class="s-card clear"><div class="s-label">// anomalies</div><div class="s-value clear">✓ CLEAR</div></div>', unsafe_allow_html=True)
 
             cap.release()
 
 elif page == "DATABASE":
+    import pickle
     st.markdown('<div class="page-header"><div class="page-title">Identity Registry</div></div>', unsafe_allow_html=True)
     
     db = get_database()
     if not db:
-        st.info("Registry is empty. Register subjects in Management panel.")
+        st.info("Registry is empty. Register subjects in Management pannel.")
     else:
         for idx, person in db.items():
             c1, c2 = st.columns([1,4])
@@ -394,9 +391,9 @@ elif page == "DATABASE":
 elif page == "MANAGEMENT":
     st.markdown('<div class="page-header"><div class="page-title">Registry Management</div></div>', unsafe_allow_html=True)
     
-    action_tabs = st.tabs(["Add Personnel", "Remove Personnel"])
+    action = st.tabs(["Add Personnel", "Remove Personnel"])
     
-    with action_tabs[0]:
+    with action[0]:
         name = st.text_input("Name")
         pid  = st.text_input("Employee ID")
         img_file = st.file_uploader("Upload Profile Image", type=["jpg","png"])
@@ -409,7 +406,7 @@ elif page == "MANAGEMENT":
                 elif ret == -1: st.error("No face detected.")
                 else: st.error("ID collision.")
     
-    with action_tabs[1]:
+    with action[1]:
         del_id = st.text_input("ID to Remove")
         if st.button("DELETE"):
             if deleteOne(del_id): st.success("Removed.")

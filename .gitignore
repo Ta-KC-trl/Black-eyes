@@ -41,3 +41,6 @@ desktop.ini
 # Training artifacts (not needed at runtime)
 runs/
 *.zip
+*.pt
+*.weights
+*.onnx

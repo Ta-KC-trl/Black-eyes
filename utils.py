@@ -1,6 +1,6 @@
 """
-utils.py — Face detection, recognition, and database operations.
-Uses OpenCV Haar cascades + cosine-similarity matching.
+utils.py — Robust face detection, recognition, and database operations.
+Falls back to OpenCV Haar Cascades if face_recognition (dlib) is not installed.
 """
 
 import pickle as pkl
@@ -9,27 +9,33 @@ import cv2
 import numpy as np
 import yaml
 
+# ── Face Recognition Imports & Availability ────────────────────────────────────
+try:
+    import face_recognition
+    FACE_RECOG_AVAILABLE = True
+except ImportError:
+    FACE_RECOG_AVAILABLE = False
+
+# ── Paths ───────────────────────────────────────────────────────────────────
 _BASE = os.path.dirname(os.path.abspath(__file__))
-with open(os.path.join(_BASE, "config.yaml"), "r") as _f:
-    _cfg = yaml.safe_load(_f)
+_CONFIG_PATH = os.path.join(_BASE, "config.yaml")
 
-PKL_PATH    = os.path.join(_BASE, _cfg["PATH"]["PKL_PATH"])
-DATASET_DIR = os.path.join(_BASE, _cfg["PATH"]["DATASET_DIR"])
+if not os.path.exists(_CONFIG_PATH):
+    _cfg = {
+        "PATH": {"PKL_PATH": "dataset/database.pkl", "DATASET_DIR": "dataset/"},
+        "YOLO": {"MODEL_PATH": "models/best.pt"},
+        "DETECTION": {"ANOMALY_TOLERANCE": 0.6, "FACE_TOLERANCE": 0.4}
+    }
+else:
+    with open(_CONFIG_PATH, "r") as _f:
+        _cfg = yaml.safe_load(_f)
 
+PKL_PATH    = os.path.join(_BASE, _cfg["PATH"].get("PKL_PATH", "dataset/database.pkl"))
+DATASET_DIR = os.path.join(_BASE, _cfg["PATH"].get("DATASET_DIR", "dataset/"))
+
+# ── Fallback Detector ────────────────────────────────────────────────────────
 _CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 _face_cascade = cv2.CascadeClassifier(_CASCADE_PATH)
-
-def _detect_faces(gray_img):
-    faces = _face_cascade.detectMultiScale(gray_img, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-    return [] if len(faces) == 0 else faces
-
-def _get_embedding(rgb_img, x, y, w, h):
-    face = cv2.resize(rgb_img[y:y+h, x:x+w], (64, 64))
-    return face.astype(np.float32).flatten() / 255.0
-
-def _cosine_sim(a, b):
-    norm = np.linalg.norm(a) * np.linalg.norm(b)
-    return float(np.dot(a, b) / norm) if norm != 0 else 0.0
 
 def get_database():
     if not os.path.exists(PKL_PATH):
@@ -40,45 +46,83 @@ def get_database():
         except Exception:
             return {}
 
-
-
 def _save_database(db):
     os.makedirs(os.path.dirname(PKL_PATH), exist_ok=True)
     with open(PKL_PATH, "wb") as f:
         pkl.dump(db, f)
 
+# ── Detection & Recognition Logic ───────────────────────────────────────────
+
 def isFaceExists(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    return len(_detect_faces(gray)) > 0
+    if FACE_RECOG_AVAILABLE:
+        return len(face_recognition.face_locations(image)) > 0
+    else:
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        faces = _face_cascade.detectMultiScale(gray, 1.1, 5)
+        return len(faces) > 0
 
 def recognize(image, tolerance=0.5):
     database = get_database()
-    gray  = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    faces = _detect_faces(gray)
-    name  = person_id = "Unknown"
-    sim_threshold = 1.0 - (tolerance * 0.5)
+    name = person_id = "Unknown"
+    
+    if FACE_RECOG_AVAILABLE:
+        # Professional 128-d Embedding Logic
+        face_locations = face_recognition.face_locations(image)
+        face_encodings = face_recognition.face_encodings(image, face_locations)
+        
+        known_encodings = []
+        known_metadata  = []
+        for idx, p in database.items():
+            if "encoding" in p:
+                known_encodings.append(p["encoding"])
+                known_metadata.append((p["name"], p["id"]))
 
-    for (x, y, w, h) in faces:
-        embedding = _get_embedding(image, x, y, w, h)
-        name = person_id = "Unknown"
-        best_sim = -1
+        for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+            name = person_id = "Unknown"
+            best_sim = 0.0
+            
+            if known_encodings:
+                face_distances = face_recognition.face_distance(known_encodings, face_encoding)
+                best_match_index = np.argmin(face_distances)
+                best_sim = 1.0 - face_distances[best_match_index]
+                
+                if face_distances[best_match_index] <= tolerance:
+                    name, person_id = known_metadata[best_match_index]
 
-        for idx, person in database.items():
-            enc = person.get("encoding")
-            if enc is None:
-                continue
-            sim = _cosine_sim(embedding, enc)
-            if sim > best_sim:
-                best_sim = sim
-                if sim >= sim_threshold:
-                    name      = person["name"]
-                    person_id = person["id"]
+            color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
+            cv2.rectangle(image, (left, top), (right, bottom), color, 2)
+            cv2.rectangle(image, (left, bottom - 35), (right, bottom), color, cv2.FILLED)
+            cv2.putText(image, name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+            
+            if name != "Unknown":
+                cv2.putText(image, f"Match: {best_sim:.2f}", (left + 6, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+    else:
+        # Fallback OpenCV Logic
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        faces = _face_cascade.detectMultiScale(gray, 1.1, 5)
+        sim_threshold = 1.0 - (tolerance * 0.5)
 
-        color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
-        cv2.rectangle(image, (x, y), (x+w, y+h), color, 2)
-        cv2.putText(image, name, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
-        if name != "Unknown":
-            cv2.putText(image, f"{best_sim:.2f}", (x, y-30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        for (x, y, w, h) in faces:
+            # Simple flattened check
+            face_roi = cv2.resize(image[y:y+h, x:x+w], (64, 64))
+            embedding = face_roi.astype(np.float32).flatten() / 255.0
+            
+            best_sim = -1
+            for idx, person in database.items():
+                enc = person.get("encoding")
+                if enc is None or len(enc) != len(embedding): continue
+                # Simple cosine sim fallback
+                norm = np.linalg.norm(embedding) * np.linalg.norm(enc)
+                sim = float(np.dot(embedding, enc) / norm) if norm != 0 else 0.0
+                
+                if sim > best_sim:
+                    best_sim = sim
+                    if sim >= sim_threshold:
+                        name, person_id = person["name"], person["id"]
+
+            color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
+            cv2.rectangle(image, (x, y), (x+w, y+h), color, 2)
+            cv2.putText(image, name, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
 
     return image, name, person_id
 
@@ -86,61 +130,40 @@ def submitNew(name, person_id, image, old_idx=None):
     database = get_database()
     if not isinstance(image, np.ndarray):
         image = cv2.imdecode(np.frombuffer(image.read(), np.uint8), 1)
-    rgb  = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-    faces = _detect_faces(gray)
-    if len(faces) == 0:
-        return -1
-    x, y, w, h  = faces[0]
-    encoding     = _get_embedding(rgb, x, y, w, h)
-    existing_ids = [database[i]["id"] for i in database]
-    if old_idx is not None:
-        idx = old_idx
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+    if FACE_RECOG_AVAILABLE:
+        face_locations = face_recognition.face_locations(image)
+        if len(face_locations) == 0: return -1
+        encoding = face_recognition.face_encodings(image, known_face_locations=[face_locations[0]])[0]
     else:
-        if person_id in existing_ids:
-            return 0
-        idx = len(database)
-    database[idx] = {"image": rgb, "id": person_id, "name": name, "encoding": encoding}
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        faces = _face_cascade.detectMultiScale(gray, 1.1, 5)
+        if len(faces) == 0: return -1
+        x, y, w, h = faces[0]
+        face_roi = cv2.resize(image[y:y+h, x:x+w], (64, 64))
+        encoding = face_roi.astype(np.float32).flatten() / 255.0
+
+    existing_ids = [database[i]["id"] for i in database]
+    idx = old_idx if old_idx is not None else len(database)
+    while old_idx is None and idx in database: idx += 1
+    if old_idx is None and person_id in existing_ids: return 0
+            
+    database[idx] = {"image": image, "id": person_id, "name": name, "encoding": encoding}
     _save_database(database)
     return True
 
 def get_info_from_id(person_id):
     database = get_database()
-    for idx, person in database.items():
-        if str(person["id"]) == str(person_id):
-            return person["name"], person["image"], idx
+    for idx, p in database.items():
+        if str(p["id"]) == str(person_id):
+            return p["name"], p["image"], idx
     return None, None, None
 
 def deleteOne(person_id):
     database = get_database()
-    for key, person in list(database.items()):
-        if str(person["id"]) == str(person_id):
-            del database[key]
-            _save_database(database)
+    for key, p in list(database.items()):
+        if str(p["id"]) == str(person_id):
+            del database[key]; _save_database(database)
             return True
     return False
-
-def build_dataset():
-    info = {}
-    counter = 0
-    for fname in os.listdir(DATASET_DIR):
-        if not fname.lower().endswith(".jpg"):
-            continue
-        fpath = os.path.join(DATASET_DIR, fname)
-        parts = fname.rsplit(".", 1)[0].split("_")
-        pid   = parts[0]
-        pname = " ".join(parts[1:])
-        img   = cv2.imread(fpath)
-        if img is None:
-            continue
-        rgb  = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-        faces = _detect_faces(gray)
-        if len(faces) == 0:
-            print(f"No face found in {fname}, skipping.")
-            continue
-        x, y, w, h = faces[0]
-        info[counter] = {"image": rgb, "id": pid, "name": pname, "encoding": _get_embedding(rgb, x, y, w, h)}
-        counter += 1
-    _save_database(info)
-    print(f"Saved {counter} entries.")
