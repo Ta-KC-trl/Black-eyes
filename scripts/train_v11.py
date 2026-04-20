@@ -1,8 +1,17 @@
 from ultralytics import YOLO
 import argparse
 import os
+import yaml
 
-def train_knife_detection(data_yaml_path, epochs=100, model_type="yolo11n.pt"):
+_BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_cfg_path = os.path.join(_BASE, "config.yaml")
+with open(_cfg_path, "r") as _f:
+    _cfg = yaml.safe_load(_f)
+_DEFAULT_BASE_MODEL = _cfg["YOLO"].get("BASE_MODEL", "yolo11n.pt")
+
+def train_knife_detection(data_yaml_path, epochs=100, model_type=None):
+    if model_type is None:
+        model_type = _DEFAULT_BASE_MODEL
     """
     Train a new knife/anomaly detection model using YOLOv11.
     """
@@ -25,7 +34,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train YOLOv11 for Anomaly Detection")
     parser.add_argument("--data", type=str, default="data/knife_openimages/data.yaml", help="Path to data.yaml")
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
-    parser.add_argument("--model", type=str, default="yolo11n.pt", help="Base model to use (yolo11n.pt, yolo11s.pt, etc.)")
+    parser.add_argument("--model", type=str, default=_DEFAULT_BASE_MODEL, help="Base model to use (yolo11n.pt, yolo11s.pt, etc.)")
     
     args = parser.parse_args()
     

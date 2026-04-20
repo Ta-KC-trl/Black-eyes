@@ -1,6 +1,11 @@
 from ultralytics import YOLO
+import os, yaml
 
-model = YOLO("yolov8m.pt")
+_BASE = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(_BASE, "config.yaml"), "r") as _f:
+    _cfg = yaml.safe_load(_f)
+
+model = YOLO(_cfg["YOLO"].get("BASE_MODEL", "yolov8m.pt"))
 
 results = model.train(
     data="data/knife_openimages/data.yaml",

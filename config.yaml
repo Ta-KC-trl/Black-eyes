@@ -4,6 +4,7 @@ PATH:
 
 YOLO:
   MODEL_PATH: "models/best.pt"
+  BASE_MODEL: "yolov8m.pt"
 
 DETECTION:
   ANOMALY_TOLERANCE: 0.5
