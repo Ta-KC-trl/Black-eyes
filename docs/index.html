@@ -112,7 +112,7 @@
     .sidebar-footer { margin-top:auto; padding:16px 20px; border-top:1px solid var(--border); font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--dim); line-height:2; }
 
     /* ── Main content ── */
-    .main { flex:1; overflow-y:auto; padding:0 32px 40px; height:100vh; }
+    .main { flex:1; overflow-y:auto; padding:0 32px 96px; height:100vh; }
 
     /* page header */
     .page-header { display:flex; align-items:flex-start; justify-content:space-between; padding:28px 0 20px; border-bottom:1px solid var(--border); margin-bottom:24px; }
@@ -122,9 +122,34 @@
     .live-dot { width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 6px var(--green); animation:blink 1.5s infinite; }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-    /* pages visibility */
+    /* pages visibility + transition */
     .page { display:none; }
-    .page.active { display:block; }
+    .page.active { display:block; animation: pageIn .22s ease forwards; }
+    @keyframes pageIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+    /* ══ BOTTOM NAV PILL ══ */
+    .bottom-nav {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      z-index: 1000; display: flex; align-items: center; gap: 4px; padding: 6px;
+      background: rgba(5,11,24,0.90);
+      backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+      border: 1px solid var(--border); border-radius: 50px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,255,170,0.05);
+      transition: box-shadow .3s;
+    }
+    .bottom-nav:hover { box-shadow: 0 8px 48px rgba(0,0,0,0.65), 0 0 0 1px rgba(0,255,170,0.10); }
+
+    .pill-item {
+      font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:700; letter-spacing:2px;
+      text-transform:uppercase; padding:10px 24px; border-radius:40px;
+      cursor:pointer; border:none; background:transparent; color:#475569;
+      transition: all .2s ease; white-space:nowrap; position:relative;
+    }
+    .pill-item:hover { color:#94a3b8; background:rgba(255,255,255,0.05); }
+    .pill-item.active {
+      background: var(--green); color:#000;
+      box-shadow: 0 0 18px rgba(0,255,170,0.35);
+    }
 
     /* ── Status cards (exact from Tracking.py) ── */
     .s-card { border-radius:8px; padding:16px 18px; margin-bottom:10px; border:1px solid var(--border); background:var(--card-bg); }
@@ -244,13 +269,6 @@
     <div class="nav-logo">
       <div class="nav-logo-text">👁 Black Eyes</div>
       <div class="nav-logo-sub">● SYSTEM ONLINE</div>
-    </div>
-
-    <div class="nav-section">// navigation</div>
-    <div class="nav-items">
-      <button class="nav-item active" onclick="navigate('tracking')">TRACKING</button>
-      <button class="nav-item" onclick="navigate('database')">DATABASE</button>
-      <button class="nav-item" onclick="navigate('management')">MANAGEMENT</button>
     </div>
 
     <div class="nav-section">// settings</div>
@@ -434,6 +452,12 @@
   </main>
 </div>
 
+<nav class="bottom-nav">
+  <button class="pill-item active" onclick="navigate('tracking',this)">TRACKING</button>
+  <button class="pill-item" onclick="navigate('database',this)">DATABASE</button>
+  <button class="pill-item" onclick="navigate('management',this)">MANAGEMENT</button>
+</nav>
+
 <div id="model-banner">⬇ Loading face models…</div>
 
 <!-- ══════════════════════════════════════
@@ -540,11 +564,12 @@ document.querySelectorAll('input[type=range]').forEach(r=>{
 // ─────────────────────────────────────
 // NAVIGATION
 // ─────────────────────────────────────
-function navigate(page){
-  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+function navigate(page, btn){
+  document.querySelectorAll('.pill-item').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  event.currentTarget.classList.add('active');
-  document.getElementById('page-'+page).classList.add('active');
+  if(btn) btn.classList.add('active');
+  const pg = document.getElementById('page-'+page);
+  pg.classList.add('active');
   if(page==='database') renderDB();
 }
 
