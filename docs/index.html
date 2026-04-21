@@ -749,7 +749,7 @@ async function startCamera(){
     });
 
     // detection loop — runs every 300ms
-    detectionLoop=setInterval(()=>detectFrame(), 300);
+    detectionLoop=setInterval(()=>detectFrame(), 500);
   } catch(e){
     setIdentityCard('unknown','CAMERA DENIED');
   }
