@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BLACK EYES — Surveillance Intelligence</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👁</text></svg>">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;600;700&family=Share+Tech+Mono&family=Exo+2:wght@200;300;400;600&display=swap');
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --green: #00ffaa;
+      --green-dim: #00ffaa22;
+      --text: #e2e8f0;
+      --muted: #334155;
+      --border: #0f2a4a;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: #000;
+      color: var(--text);
+      font-family: 'Exo 2', sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* ── Canvas ── */
+    #bg {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ── Scanlines overlay ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent, transparent 2px,
+        rgba(0,255,170,0.012) 2px, rgba(0,255,170,0.012) 4px
+      );
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 28px 48px;
+    }
+    .nav-logo {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 6px;
+      color: #fff;
+      text-transform: uppercase;
+    }
+    .nav-logo span { color: var(--green); }
+    .nav-links {
+      display: flex;
+      gap: 40px;
+      list-style: none;
+    }
+    .nav-links a {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 3px;
+      color: var(--muted);
+      text-decoration: none;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--green); }
+    .nav-github {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--green);
+      text-decoration: none;
+      border: 1px solid var(--green);
+      padding: 8px 18px;
+      border-radius: 2px;
+      text-transform: uppercase;
+      transition: background 0.2s, color 0.2s;
+    }
+    .nav-github:hover { background: var(--green); color: #000; }
+
+    /* ── SCROLL WRAPPER ── */
+    #scroll-wrapper {
+      position: relative;
+      z-index: 2;
+    }
+
+    /* ── HERO ── */
+    #hero {
+      height: 300vh; /* tall so scroll-zoom has room */
+      position: relative;
+    }
+    .hero-sticky {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      pointer-events: none;
+    }
+    .hero-tag {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 5px;
+      color: var(--green);
+      text-transform: uppercase;
+      margin-bottom: 24px;
+      opacity: 0;
+      animation: fadeUp 1s 0.3s ease forwards;
+    }
+    .hero-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: clamp(56px, 10vw, 120px);
+      font-weight: 700;
+      letter-spacing: 12px;
+      text-transform: uppercase;
+      line-height: 0.9;
+      color: #fff;
+      opacity: 0;
+      animation: fadeUp 1s 0.5s ease forwards;
+    }
+    .hero-title .eye { color: var(--green); }
+    .hero-subtitle {
+      font-family: 'Exo 2', sans-serif;
+      font-size: 13px;
+      font-weight: 300;
+      letter-spacing: 4px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-top: 28px;
+      max-width: 480px;
+      line-height: 1.8;
+      opacity: 0;
+      animation: fadeUp 1s 0.7s ease forwards;
+    }
+    .scroll-hint {
+      position: absolute;
+      bottom: 48px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      opacity: 0;
+      animation: fadeUp 1s 1.2s ease forwards;
+    }
+    .scroll-hint-text {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 4px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .scroll-line {
+      width: 1px;
+      height: 48px;
+      background: linear-gradient(to bottom, var(--green), transparent);
+      animation: scrollPulse 2s infinite;
+    }
+    @keyframes scrollPulse { 0%,100%{opacity:1;transform:scaleY(1)} 50%{opacity:0.4;transform:scaleY(0.6)} }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+
+    /* ── CONTENT SECTIONS (visible after hero scroll) ── */
+    #content {
+      position: relative;
+      z-index: 10;
+      background: #000;
+    }
+
+    section.content-section {
+      padding: 120px 48px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .section-tag {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 4px;
+      color: var(--green);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: clamp(32px, 5vw, 56px);
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #fff;
+      margin-bottom: 48px;
+      line-height: 1;
+    }
+
+    /* ── DIVIDER ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0 48px;
+    }
+
+    /* ── FEATURES GRID ── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2px;
+      border: 1px solid var(--border);
+    }
+    .feature-card {
+      padding: 36px 32px;
+      border: 1px solid transparent;
+      background: #030712;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 2px;
+      height: 0;
+      background: var(--green);
+      transition: height 0.3s;
+    }
+    .feature-card:hover { border-color: var(--border); background: #050b18; }
+    .feature-card:hover::before { height: 100%; }
+    .feature-icon {
+      font-size: 28px;
+      margin-bottom: 20px;
+      display: block;
+    }
+    .feature-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+    .feature-desc {
+      font-family: 'Exo 2', sans-serif;
+      font-size: 13px;
+      font-weight: 300;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    /* ── PIPELINE ── */
+    .pipeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .pipeline-step {
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 32px;
+      padding: 40px 0;
+      border-bottom: 1px solid var(--border);
+      align-items: start;
+    }
+    .pipeline-step:last-child { border-bottom: none; }
+    .step-num {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: var(--green);
+      padding-top: 4px;
+    }
+    .step-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+    .step-desc {
+      font-family: 'Exo 2', sans-serif;
+      font-size: 13px;
+      font-weight: 300;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .step-tech {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .tech-pill {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--green);
+      border: 1px solid var(--green);
+      padding: 4px 10px;
+      border-radius: 2px;
+      text-transform: uppercase;
+    }
+
+    /* ── APP PREVIEW ── */
+    .preview-frame {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      background: #030712;
+      position: relative;
+    }
+    .preview-bar {
+      background: #050b18;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .preview-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+    .preview-dot.r { background: #ff4444; }
+    .preview-dot.y { background: #ffaa00; }
+    .preview-dot.g { background: #00ff88; }
+    .preview-url {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      margin-left: 12px;
+      letter-spacing: 1px;
+    }
+    .preview-body {
+      padding: 32px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      min-height: 300px;
+    }
+    .preview-cam {
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      aspect-ratio: 16/10;
+      position: relative;
+      overflow: hidden;
+    }
+    .cam-scanline {
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 4px, rgba(0,255,170,0.04) 4px, rgba(0,255,170,0.04) 8px);
+    }
+    .cam-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 3px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .cam-corner {
+      position: absolute;
+      width: 16px; height: 16px;
+      border-color: var(--green);
+      border-style: solid;
+      opacity: 0.5;
+    }
+    .cam-corner.tl { top: 12px; left: 12px; border-width: 1px 0 0 1px; }
+    .cam-corner.tr { top: 12px; right: 12px; border-width: 1px 1px 0 0; }
+    .cam-corner.bl { bottom: 12px; left: 12px; border-width: 0 0 1px 1px; }
+    .cam-corner.br { bottom: 12px; right: 12px; border-width: 0 1px 1px 0; }
+    .live-dot-preview {
+      position: absolute;
+      top: 14px; right: 40px;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: blink 1.5s infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+    .preview-panels { display: flex; flex-direction: column; gap: 12px; }
+    .status-card {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 16px 18px;
+      background: #070f1f;
+    }
+    .status-card.known { border-color: #00ffaa33; background: #00ffaa06; }
+    .status-card.threat { border-color: #ff6b0033; background: #ff6b0006; animation: threatPulse 1.5s infinite; }
+    @keyframes threatPulse { 0%,100%{border-color:#ff6b0033} 50%{border-color:#ff6b0099} }
+    .status-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 8px;
+      letter-spacing: 3px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .status-value {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .status-value.known { color: var(--green); }
+    .status-value.threat { color: #ff6b00; }
+
+    /* ── INSTALL ── */
+    .install-block {
+      background: #030712;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 32px 36px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px;
+      line-height: 2;
+      color: var(--muted);
+      position: relative;
+      overflow: hidden;
+    }
+    .install-block::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 3px; height: 100%;
+      background: var(--green);
+    }
+    .install-block .prompt { color: var(--green); }
+    .install-block .cmd { color: #e2e8f0; }
+    .install-block .comment { color: #1e3a5f; }
+
+    /* ── CTA ── */
+    #cta-section {
+      text-align: center;
+      padding: 120px 48px 160px;
+      background: #000;
+      border-top: 1px solid var(--border);
+    }
+    .cta-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: clamp(32px, 6vw, 64px);
+      font-weight: 700;
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+    .cta-sub {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 48px;
+    }
+    .cta-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    .btn-primary {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      text-decoration: none;
+      color: #000;
+      background: var(--green);
+      padding: 16px 40px;
+      border-radius: 2px;
+      transition: opacity 0.2s;
+    }
+    .btn-primary:hover { opacity: 0.85; }
+    .btn-secondary {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      text-decoration: none;
+      color: var(--green);
+      border: 1px solid var(--green);
+      padding: 16px 40px;
+      border-radius: 2px;
+      transition: background 0.2s, color 0.2s;
+    }
+    .btn-secondary:hover { background: var(--green); color: #000; }
+
+    /* ── FOOTER ── */
+    footer {
+      background: #000;
+      border-top: 1px solid var(--border);
+      padding: 32px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    footer .logo { font-family:'Rajdhani',sans-serif; font-size:14px; font-weight:700; letter-spacing:4px; color:#fff; }
+    footer .copy { font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:2px; color:var(--muted); }
+    footer .build { font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:2px; color:#1e3a5f; }
+
+    /* ── TRANSITION OVERLAY ── */
+    #entry-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      background: radial-gradient(circle at center, transparent 0%, #000 70%);
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+<div id="entry-overlay"></div>
+
+<!-- ── NAV ── -->
+<nav>
+  <div class="nav-logo">👁 <span>Black</span> Eyes</div>
+  <ul class="nav-links">
+    <li><a href="#features-section">Features</a></li>
+    <li><a href="#pipeline-section">How It Works</a></li>
+    <li><a href="#install-section">Install</a></li>
+  </ul>
+  <a class="nav-github" href="https://github.com/Ta-KC-trl/Black-eyes" target="_blank">GitHub ↗</a>
+</nav>
+
+<!-- ── SCROLL WRAPPER ── -->
+<div id="scroll-wrapper">
+
+  <!-- HERO (tall for scroll zoom) -->
+  <section id="hero">
+    <div class="hero-sticky">
+      <div class="hero-tag">// v3.1.0 · surveillance intelligence</div>
+      <h1 class="hero-title">BLACK<br><span class="eye">EYES</span></h1>
+      <p class="hero-subtitle">Real-time face recognition & anomaly detection.<br>YOLOv11 · dlib 128-d embeddings · Streamlit</p>
+      <div class="scroll-hint">
+        <span class="scroll-hint-text">Scroll to enter</span>
+        <div class="scroll-line"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTENT (after scroll-through) -->
+  <div id="content">
+
+    <hr class="divider">
+
+    <!-- FEATURES -->
+    <section class="content-section" id="features-section">
+      <div class="section-tag">// capabilities</div>
+      <h2 class="section-title">What It Does</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <span class="feature-icon">👤</span>
+          <div class="feature-name">Face Recognition</div>
+          <div class="feature-desc">128-dimensional dlib embeddings identify registered subjects in real time. Falls back to OpenCV Haar cascades if dlib is unavailable.</div>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🔥</span>
+          <div class="feature-name">Anomaly Detection</div>
+          <div class="feature-desc">Custom YOLOv11 model detects fire, smoke, knives, and guns with configurable confidence thresholds.</div>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">📷</span>
+          <div class="feature-name">Live Camera Feed</div>
+          <div class="feature-desc">Face recognition and anomaly detection run in parallel on every frame, with real-time identity and threat panels.</div>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🗂</span>
+          <div class="feature-name">Identity Registry</div>
+          <div class="feature-desc">Register, browse, and delete subjects entirely through the UI. Encodings stored locally with mtime-based cache.</div>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🖼</span>
+          <div class="feature-name">Static Image Scan</div>
+          <div class="feature-desc">Upload any image for combined face identification and anomaly scanning — no webcam required.</div>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">⚡</span>
+          <div class="feature-name">Smart Caching</div>
+          <div class="feature-desc">The face database is cached in memory and reloads from disk only when the file changes — zero disk reads per frame.</div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- HOW IT WORKS -->
+    <section class="content-section" id="pipeline-section">
+      <div class="section-tag">// pipeline</div>
+      <h2 class="section-title">How It Works</h2>
+      <div class="pipeline">
+        <div class="pipeline-step">
+          <div class="step-num">01 //</div>
+          <div>
+            <div class="step-name">Capture</div>
+            <div class="step-desc">Frames are captured from a live webcam or a static image upload. Each frame is converted to RGB for face detection and kept as BGR for YOLO.</div>
+            <div class="step-tech"><span class="tech-pill">OpenCV</span><span class="tech-pill">Streamlit</span></div>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="step-num">02 //</div>
+          <div>
+            <div class="step-name">Face Recognition</div>
+            <div class="step-desc">dlib's HOG detector locates faces, then encodes each into a 128-d vector. Euclidean distance to the identity registry determines identity — with OpenCV cosine-similarity as the no-dlib fallback.</div>
+            <div class="step-tech"><span class="tech-pill">dlib</span><span class="tech-pill">face_recognition</span><span class="tech-pill">numpy</span></div>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="step-num">03 //</div>
+          <div>
+            <div class="step-name">Anomaly Detection</div>
+            <div class="step-desc">YOLOv11 runs inference on the same frame independently, returning bounding boxes and class labels for fire, smoke, knives, and guns above the confidence threshold.</div>
+            <div class="step-tech"><span class="tech-pill">YOLOv11</span><span class="tech-pill">Ultralytics</span><span class="tech-pill">PyTorch</span></div>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="step-num">04 //</div>
+          <div>
+            <div class="step-name">Display & Alert</div>
+            <div class="step-desc">Results are merged onto the frame and streamed to the Streamlit dashboard. Identity and threat status cards update in real time with colour-coded severity.</div>
+            <div class="step-tech"><span class="tech-pill">Streamlit</span><span class="tech-pill">OpenCV</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- APP PREVIEW MOCKUP -->
+    <section class="content-section">
+      <div class="section-tag">// dashboard</div>
+      <h2 class="section-title">The Interface</h2>
+      <div class="preview-frame">
+        <div class="preview-bar">
+          <div class="preview-dot r"></div>
+          <div class="preview-dot y"></div>
+          <div class="preview-dot g"></div>
+          <span class="preview-url">localhost:8501 — BLACK EYES</span>
+        </div>
+        <div class="preview-body">
+          <div class="preview-cam">
+            <div class="cam-scanline"></div>
+            <div class="cam-corner tl"></div>
+            <div class="cam-corner tr"></div>
+            <div class="cam-corner bl"></div>
+            <div class="cam-corner br"></div>
+            <div class="live-dot-preview"></div>
+            <span class="cam-label">// live feed · face + anomaly scan</span>
+          </div>
+          <div class="preview-panels">
+            <div class="status-card known">
+              <div class="status-label">// biometric identity</div>
+              <div class="status-value known">AUTHORISED</div>
+            </div>
+            <div class="status-card threat">
+              <div class="status-label">// anomaly scan</div>
+              <div class="status-value threat">⚠ KNIFE</div>
+            </div>
+            <div class="status-card">
+              <div class="status-label">// engine</div>
+              <div class="status-value" style="color:#64748b;font-size:14px">YOLOv11 · dlib 128-d · v3.1.0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- INSTALL -->
+    <section class="content-section" id="install-section">
+      <div class="section-tag">// quick start</div>
+      <h2 class="section-title">Get Running</h2>
+      <div class="install-block">
+        <div class="comment"># Clone and set up</div>
+        <div><span class="prompt">$</span> <span class="cmd">git clone https://github.com/Ta-KC-trl/Black-eyes.git</span></div>
+        <div><span class="prompt">$</span> <span class="cmd">cd Black-eyes</span></div>
+        <div><span class="prompt">$</span> <span class="cmd">python -m venv .venv && .venv\Scripts\activate</span></div>
+        <br>
+        <div class="comment"># Install dependencies</div>
+        <div><span class="prompt">$</span> <span class="cmd">pip install -r requirements.txt</span></div>
+        <br>
+        <div class="comment"># Launch dashboard</div>
+        <div><span class="prompt">$</span> <span class="cmd">streamlit run Tracking.py</span></div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section id="cta-section">
+      <div class="section-tag" style="justify-content:center;display:flex;margin-bottom:20px">// open source · mit license</div>
+      <h2 class="cta-title">See the Code</h2>
+      <p class="cta-sub">YOLOv11 · face_recognition · Streamlit · Python</p>
+      <div class="cta-buttons">
+        <a class="btn-primary" href="https://github.com/Ta-KC-trl/Black-eyes" target="_blank">View on GitHub</a>
+        <a class="btn-secondary" href="https://github.com/Ta-KC-trl/Black-eyes/archive/refs/heads/main.zip">Download ZIP</a>
+      </div>
+    </section>
+
+    <footer>
+      <div class="logo">👁 BLACK EYES</div>
+      <div class="copy">© 2026 Ta-KC-trl · MIT License</div>
+      <div class="build">BUILD v3.1.0 · YOLOv11 + FACE_RECOG</div>
+    </footer>
+
+  </div><!-- /content -->
+</div><!-- /scroll-wrapper -->
+
+<script>
+// ════════════════════════════════════════════
+// THREE.JS — ANIMATED EYE BLOB
+// ════════════════════════════════════════════
+const canvas = document.getElementById('bg');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 1);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 100);
+camera.position.set(0, 0, 3.8);
+
+// ── LIGHTS ──
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.05);
+scene.add(ambientLight);
+const pointLight1 = new THREE.PointLight(0x00ffaa, 0.3, 20);
+pointLight1.position.set(3, 3, 3);
+scene.add(pointLight1);
+const pointLight2 = new THREE.PointLight(0xffffff, 0.2, 20);
+pointLight2.position.set(-3, -2, 2);
+scene.add(pointLight2);
+
+// ── NOISE FUNCTION (multi-octave sine) ──
+function noise3(x, y, z) {
+  return (
+    Math.sin(x * 1.5) * Math.cos(y * 1.2) * Math.sin(z * 1.8) * 0.5 +
+    Math.sin(x * 3.1 + 1.1) * Math.cos(y * 2.7 + 0.5) * 0.25 +
+    Math.sin(x * 6.3 + z * 2.1) * Math.cos(y * 5.5) * 0.125
+  );
+}
+
+// ── INNER DARK BLOB ──
+const blobGeo = new THREE.SphereGeometry(1.5, 128, 128);
+const blobPositions = blobGeo.attributes.position;
+const originalPositions = new Float32Array(blobPositions.array);
+
+const blobMat = new THREE.MeshPhongMaterial({
+  color: 0x080808,
+  transparent: true,
+  opacity: 0.92,
+  shininess: 30,
+  specular: new THREE.Color(0x333333),
+});
+const blob = new THREE.Mesh(blobGeo, blobMat);
+scene.add(blob);
+
+// ── FRESNEL GLOW SHELL (white at edges) ──
+const fresnelVert = `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vViewDir = normalize(-mvPos.xyz);
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+const fresnelFrag = `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    float fresnel = pow(1.0 - clamp(dot(vNormal, vViewDir), 0.0, 1.0), 2.5);
+    float alpha = fresnel * 0.85;
+    gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+  }
+`;
+const fresnelMat = new THREE.ShaderMaterial({
+  vertexShader: fresnelVert,
+  fragmentShader: fresnelFrag,
+  transparent: true,
+  side: THREE.FrontSide,
+  depthWrite: false,
+});
+const fresnelShell = new THREE.Mesh(
+  new THREE.SphereGeometry(1.52, 64, 64),
+  fresnelMat
+);
+scene.add(fresnelShell);
+
+// ── INNER GLOW (green tint) ──
+const innerGlowMat = new THREE.ShaderMaterial({
+  vertexShader: fresnelVert,
+  fragmentShader: `
+    varying vec3 vNormal;
+    varying vec3 vViewDir;
+    void main() {
+      float fresnel = pow(1.0 - clamp(dot(vNormal, vViewDir), 0.0, 1.0), 4.0);
+      gl_FragColor = vec4(0.0, 1.0, 0.67, fresnel * 0.25);
+    }
+  `,
+  transparent: true,
+  side: THREE.BackSide,
+  depthWrite: false,
+});
+const innerGlow = new THREE.Mesh(new THREE.SphereGeometry(1.6, 32, 32), innerGlowMat);
+scene.add(innerGlow);
+
+// ── WISPY TENDRILS ──
+function randomOnSphere(r) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  return new THREE.Vector3(
+    r * Math.sin(phi) * Math.cos(theta),
+    r * Math.sin(phi) * Math.sin(theta),
+    r * Math.cos(phi)
+  );
+}
+
+const tendrilGroup = new THREE.Group();
+for (let i = 0; i < 18; i++) {
+  const start = randomOnSphere(1.5);
+  const mid = randomOnSphere(2.4 + Math.random() * 0.6);
+  const end = randomOnSphere(3.2 + Math.random() * 0.8);
+
+  const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+  const pts = curve.getPoints(60);
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.12 + Math.random() * 0.12,
+  });
+  tendrilGroup.add(new THREE.Line(geo, mat));
+}
+scene.add(tendrilGroup);
+
+// ── PARTICLE DUST ──
+const particleCount = 3000;
+const pPositions = new Float32Array(particleCount * 3);
+const pSizes = new Float32Array(particleCount);
+for (let i = 0; i < particleCount; i++) {
+  const r = 1.6 + Math.random() * 3.5;
+  const v = randomOnSphere(r);
+  pPositions[i * 3] = v.x + (Math.random() - 0.5) * 2;
+  pPositions[i * 3 + 1] = v.y + (Math.random() - 0.5) * 2;
+  pPositions[i * 3 + 2] = v.z + (Math.random() - 0.5) * 2;
+  pSizes[i] = Math.random() * 2 + 0.5;
+}
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+pGeo.setAttribute('size', new THREE.BufferAttribute(pSizes, 1));
+const pMat = new THREE.PointsMaterial({
+  color: 0xffffff,
+  size: 0.015,
+  transparent: true,
+  opacity: 0.4,
+  sizeAttenuation: true,
+});
+const particles = new THREE.Points(pGeo, pMat);
+scene.add(particles);
+
+// ════════════════════════════════════════════
+// SCROLL → CAMERA ZOOM
+// ════════════════════════════════════════════
+const heroSection = document.getElementById('hero');
+const entryOverlay = document.getElementById('entry-overlay');
+
+function getScrollProgress() {
+  const heroHeight = heroSection.offsetHeight - window.innerHeight;
+  return Math.max(0, Math.min(1, window.scrollY / heroHeight));
+}
+
+let targetCamZ = 3.8;
+let currentCamZ = 3.8;
+
+window.addEventListener('scroll', () => {
+  const t = getScrollProgress();
+
+  // Camera zooms from z=3.8 → z=-0.5 (through the blob)
+  targetCamZ = 3.8 - t * 4.5;
+
+  // Vignette darkens as we approach the blob surface
+  const vignette = t > 0.5 ? (t - 0.5) * 2 : 0;
+  entryOverlay.style.opacity = vignette * 0.85;
+
+  // Blob scales slightly outward as camera approaches
+  const scale = 1 + t * 0.15;
+  blob.scale.setScalar(scale);
+  fresnelShell.scale.setScalar(scale);
+  innerGlow.scale.setScalar(scale);
+  tendrilGroup.scale.setScalar(scale);
+});
+
+// ════════════════════════════════════════════
+// ANIMATION LOOP
+// ════════════════════════════════════════════
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Smooth camera lerp
+  currentCamZ += (targetCamZ - currentCamZ) * 0.06;
+  camera.position.z = currentCamZ;
+
+  // Vertex displacement (organic morph)
+  const pos = blobGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const ox = originalPositions[i * 3];
+    const oy = originalPositions[i * 3 + 1];
+    const oz = originalPositions[i * 3 + 2];
+    const d = 0.22 * noise3(ox + t * 0.18, oy + t * 0.14, oz + t * 0.21);
+    const len = Math.sqrt(ox*ox + oy*oy + oz*oz);
+    pos.array[i * 3]     = ox + (ox/len) * d;
+    pos.array[i * 3 + 1] = oy + (oy/len) * d;
+    pos.array[i * 3 + 2] = oz + (oz/len) * d;
+  }
+  pos.needsUpdate = true;
+  blobGeo.computeVertexNormals();
+
+  // Slow rotation
+  blob.rotation.y = t * 0.08;
+  blob.rotation.x = Math.sin(t * 0.05) * 0.15;
+  fresnelShell.rotation.copy(blob.rotation);
+  innerGlow.rotation.copy(blob.rotation);
+  tendrilGroup.rotation.y = t * 0.04;
+  tendrilGroup.rotation.x = Math.sin(t * 0.03) * 0.08;
+
+  // Particle drift
+  particles.rotation.y = t * 0.012;
+  particles.rotation.x = Math.sin(t * 0.008) * 0.05;
+
+  // Light orbit
+  pointLight1.position.x = Math.sin(t * 0.3) * 4;
+  pointLight1.position.z = Math.cos(t * 0.3) * 4;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── RESIZE ──
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+
+</body>
+</html>
