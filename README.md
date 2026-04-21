@@ -55,20 +55,18 @@ pip install -r requirements.txt
 
 ### Model Weights
 
-The custom-trained YOLOv11 model is not included in the repo. Place your trained `best.pt` inside `models/`:
+The custom-trained YOLOv11 model (`models/best.pt`) is included in the repo via **Git LFS** — it downloads automatically when you clone.
 
-```
-models/
-  └── best.pt
-```
+> Make sure Git LFS is installed first: [git-lfs.com](https://git-lfs.com)  
+> Then: `git lfs install` once, then `git clone` as normal.
 
-Train your own with:
+To train your own model:
 
 ```bash
 python scripts/train_v11.py --data dataset/data.yaml --epochs 100 --model yolo11n.pt
 ```
 
-> If no custom model is found, the app falls back to `yolov8n.pt` automatically.
+> If `models/best.pt` is missing, the app automatically falls back to `yolov8n.pt`.
 
 ### Run
 
@@ -91,7 +89,7 @@ Black-eyes/
 ├── requirements.txt     # Python dependencies
 ├── scripts/
 │   └── train_v11.py     # YOLOv11 training with argparse CLI
-├── models/              # YOLO weights — gitignored, place best.pt here
+├── models/              # YOLO weights — stored via Git LFS (best.pt included)
 ├── dataset/
 │   ├── data.yaml        # Dataset class definitions for training
 │   └── database.pkl     # Face encoding store — gitignored (auto-created at runtime)
