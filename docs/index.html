@@ -6,7 +6,6 @@
   <title>BLACK EYES — Surveillance Intelligence</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👁</text></svg>">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;600;700&family=Share+Tech+Mono&family=Exo+2:wght@200;300;400;600&display=swap');
 
@@ -564,48 +563,52 @@ function switchInputMode(){
 }
 
 // ─────────────────────────────────────
-// FACE-API.JS MODELS
+// PYTHON BACKEND (api.py on :5000)
 // ─────────────────────────────────────
-const MODEL_URL='./weights';
-let modelsReady=false;
+const API = 'http://localhost:5000';
+let apiReady = false;
 
-async function loadModels(){
-  try{
-    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-    modelsReady=true;
-    const b=document.getElementById('model-banner');
-    b.textContent='✓ Face models ready';
-    setTimeout(()=>b.classList.add('hidden'),2000);
-  } catch(e){
-    document.getElementById('model-banner').textContent='⚠ Face models failed — check connection';
+async function checkAPI(){
+  const b = document.getElementById('model-banner');
+  try {
+    const r = await fetch(`${API}/status`);
+    const s = await r.json();
+    apiReady = true;
+    b.textContent = `✓ Backend ready — YOLO classes: ${s.yolo_classes.join(', ')}`;
+    setTimeout(()=>b.classList.add('hidden'), 3000);
+  } catch(e) {
+    b.textContent = '⚠ Backend offline — run: python api.py';
+    b.style.color = '#ff4444';
+    setTimeout(checkAPI, 3000);
   }
 }
 
-window.addEventListener('load',()=>{
-  if(typeof faceapi!=='undefined') loadModels();
-  else { setTimeout(()=>{if(typeof faceapi!=='undefined')loadModels();},1000); }
-});
+window.addEventListener('load', checkAPI);
 
 // ─────────────────────────────────────
-// LOCAL DATABASE  (localStorage)
+// DATABASE — fetch from Python backend
 // ─────────────────────────────────────
-function getDB(){ try{ return JSON.parse(localStorage.getItem('blackeyes_db')||'{}'); }catch{return{};} }
-function saveDB(db){ localStorage.setItem('blackeyes_db', JSON.stringify(db)); }
-
-function renderDB(){
-  const db=getDB(); const keys=Object.keys(db);
-  const el=document.getElementById('db-content');
-  if(!keys.length){
-    el.innerHTML='<div class="db-empty">// REGISTRY EMPTY — register subjects in the MANAGEMENT panel</div>';
-    return;
+async function renderDB(){
+  const el = document.getElementById('db-content');
+  el.innerHTML = '<div class="db-empty">// LOADING…</div>';
+  try {
+    const r = await fetch(`${API}/db`);
+    const db = await r.json();
+    const keys = Object.keys(db);
+    if(!keys.length){
+      el.innerHTML='<div class="db-empty">// REGISTRY EMPTY — register subjects in the MANAGEMENT panel</div>';
+      return;
+    }
+    el.innerHTML = keys.map(k => {
+      const p = db[k];
+      const img = p.photo
+        ? `<img src="${p.photo}" style="width:70px;height:70px;object-fit:cover;border-radius:4px;">`
+        : `<div style="width:70px;height:70px;background:var(--active-bg);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:28px;">👤</div>`;
+      return `<div class="db-row">${img}<div><div class="db-name">${p.name}</div><div class="db-id">UUID: ${p.id}</div></div></div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="db-empty">// BACKEND OFFLINE — start api.py</div>';
   }
-  el.innerHTML=keys.map(k=>{
-    const p=db[k];
-    const img=p.photoDataUrl?`<img src="${p.photoDataUrl}" style="width:70px;height:70px;object-fit:cover;border-radius:4px;">`:'<div style="width:70px;height:70px;background:var(--active-bg);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:28px;">👤</div>';
-    return `<div class="db-row">${img}<div><div class="db-name">${p.name}</div><div class="db-id">UUID: ${p.id}</div></div></div>`;
-  }).join('');
 }
 
 // ─────────────────────────────────────
@@ -670,62 +673,52 @@ function previewReg(e){
 }
 
 async function registerPerson(){
-  const name=document.getElementById('reg-name').value.trim();
-  const id=document.getElementById('reg-id').value.trim();
-  const alertEl=document.getElementById('reg-alert');
-  alertEl.className='alert hidden';
-
-  // Determine image source
-  let photoDataUrl=null;
-  let imgEl=null;
-  if(regImgSrc==='webcam'){
-    if(!regCapturedDataUrl){ showAlert(alertEl,'error','Capture a frame from webcam first.'); return; }
-    photoDataUrl=regCapturedDataUrl;
-    imgEl=new Image(); imgEl.src=photoDataUrl;
-    await new Promise(r=>{ imgEl.onload=r; });
-  } else {
-    const file=document.getElementById('reg-file').files[0];
-    if(!file){ showAlert(alertEl,'error','Choose an image file.'); return; }
-    photoDataUrl=await new Promise(res=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsDataURL(file); });
-    imgEl=await faceapi.bufferToImage(file);
-  }
-
+  const name    = document.getElementById('reg-name').value.trim();
+  const id      = document.getElementById('reg-id').value.trim();
+  const alertEl = document.getElementById('reg-alert');
+  alertEl.className = 'alert hidden';
   if(!name||!id){ showAlert(alertEl,'error','Fill in Name and ID.'); return; }
 
-  const db=getDB();
-  if(Object.values(db).some(p=>p.id===id)){ showAlert(alertEl,'error','ID already exists.'); return; }
-
-  // Get face descriptor
-  let descriptor=null;
-  if(modelsReady){
-    const det=await faceapi.detectSingleFace(imgEl, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks(true).withFaceDescriptor();
-    if(!det){ showAlert(alertEl,'error','No face detected. Try a clearer photo.'); return; }
-    descriptor=Array.from(det.descriptor);
+  let photoDataUrl = null;
+  if(regImgSrc==='webcam'){
+    if(!regCapturedDataUrl){ showAlert(alertEl,'error','Capture a frame from webcam first.'); return; }
+    photoDataUrl = regCapturedDataUrl;
+  } else {
+    const file = document.getElementById('reg-file').files[0];
+    if(!file){ showAlert(alertEl,'error','Choose an image file.'); return; }
+    photoDataUrl = await new Promise(res=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsDataURL(file); });
   }
 
-  const key=Date.now().toString();
-  db[key]={ name, id, photoDataUrl, descriptor };
-  saveDB(db);
-  showAlert(alertEl,'success','Subject authorized successfully.');
-  document.getElementById('reg-name').value='';
-  document.getElementById('reg-id').value='';
-  document.getElementById('reg-file').value='';
-  document.getElementById('reg-preview').style.display='none';
-  regCapturedDataUrl=null;
+  showAlert(alertEl,'info','Processing…');
+  try {
+    const resp = await fetch(`${API}/register`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, id, photo: photoDataUrl})
+    });
+    const data = await resp.json();
+    if(!resp.ok){ showAlert(alertEl,'error', data.error||'Registration failed.'); return; }
+    showAlert(alertEl,'success','Subject authorized successfully.');
+    document.getElementById('reg-name').value='';
+    document.getElementById('reg-id').value='';
+    document.getElementById('reg-file').value='';
+    document.getElementById('reg-preview').style.display='none';
+    regCapturedDataUrl=null;
+  } catch(e){ showAlert(alertEl,'error','Backend offline — start api.py'); }
 }
 
-function deletePerson(){
-  const id=document.getElementById('del-id').value.trim();
-  const alertEl=document.getElementById('del-alert');
-  alertEl.className='alert hidden';
+async function deletePerson(){
+  const id      = document.getElementById('del-id').value.trim();
+  const alertEl = document.getElementById('del-alert');
+  alertEl.className = 'alert hidden';
   if(!id){ showAlert(alertEl,'error','Enter an ID.'); return; }
-  const db=getDB();
-  const key=Object.keys(db).find(k=>db[k].id===id);
-  if(!key){ showAlert(alertEl,'error','ID not found.'); return; }
-  delete db[key]; saveDB(db);
-  showAlert(alertEl,'success','Subject removed.');
-  document.getElementById('del-id').value='';
+  try {
+    const resp = await fetch(`${API}/unregister/${encodeURIComponent(id)}`, {method:'DELETE'});
+    const data = await resp.json();
+    if(!resp.ok){ showAlert(alertEl,'error', data.error||'Not found.'); return; }
+    showAlert(alertEl,'success','Subject removed.');
+    document.getElementById('del-id').value='';
+  } catch(e){ showAlert(alertEl,'error','Backend offline — start api.py'); }
 }
 
 function showAlert(el, type, msg){
@@ -777,42 +770,36 @@ function stopCamera(){
   setAnomalyCard('','AWAITING FEED');
 }
 
+let _detecting = false;
 async function detectFrame(){
-  if(!isRunning||!modelsReady) return;
-  const video=document.getElementById('cam-video');
-  if(video.readyState<2) return;
+  if(!isRunning || _detecting) return;
+  const video = document.getElementById('cam-video');
+  if(video.readyState < 2) return;
 
-  const opts=new faceapi.TinyFaceDetectorOptions({inputSize:224,scoreThreshold:.4});
-  const detections=await faceapi.detectAllFaces(video,opts).withFaceLandmarks(true).withFaceDescriptors();
-  drawDetections(video, detections);
-  updateIdentityUI(detections);
-}
+  // Capture frame to canvas → base64
+  const cap = document.createElement('canvas');
+  cap.width = video.videoWidth; cap.height = video.videoHeight;
+  cap.getContext('2d').drawImage(video, 0, 0);
+  const frame = cap.toDataURL('image/jpeg', 0.7);
 
-function getKnownDescriptors(){
-  const db=getDB();
-  return Object.values(db)
-    .filter(p=>p.descriptor)
-    .map(p=>({ name:p.name, id:p.id, descriptor:new Float32Array(p.descriptor) }));
-}
+  const tol      = document.getElementById('tolerance').value / 100;
+  const anomConf = document.getElementById('anomaly-conf').value / 100;
 
-function updateIdentityUI(detections){
-  if(!detections.length){
-    setIdentityCard('unknown','UNKNOWN');
-    return;
+  _detecting = true;
+  try {
+    const resp = await fetch(`${API}/detect`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({frame, tolerance: tol, anomaly_conf: anomConf})
+    });
+    const data = await resp.json();
+    drawDetections(video, data.faces, data.anomalies);
+    updateStatusCards(data.faces, data.anomalies);
+  } catch(e) {
+    setIdentityCard('unknown','BACKEND OFFLINE');
+  } finally {
+    _detecting = false;
   }
-  const tol=document.getElementById('tolerance').value/100;
-  const known=getKnownDescriptors();
-
-  for(const det of detections){
-    if(!known.length){ setIdentityCard('unknown','UNKNOWN'); return; }
-    const distances=known.map(k=>faceapi.euclideanDistance(det.descriptor,k.descriptor));
-    const minIdx=distances.indexOf(Math.min(...distances));
-    if(distances[minIdx]<=tol){
-      setIdentityCard('known', known[minIdx].name.toUpperCase());
-      return;
-    }
-  }
-  setIdentityCard('unknown','UNKNOWN');
 }
 
 function setIdentityCard(cls, text){
@@ -826,49 +813,61 @@ function setAnomalyCard(cls, text){
   card.innerHTML=`<div class="s-label">// anomaly scan</div><div class="s-value ${cls}" style="${!cls?'color:var(--muted);font-size:18px':''}">${text}</div>`;
 }
 
-function drawDetections(video, detections){
-  const canvas=document.getElementById('cam-canvas');
-  const ctx=canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!detections.length) return;
+function drawDetections(video, faces, anomalies){
+  const canvas = document.getElementById('cam-canvas');
+  const ctx    = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const W = canvas.width, H = canvas.height;
 
-  const scaleX=canvas.width/video.videoWidth;
-  const scaleY=canvas.height/video.videoHeight;
-  const tol=document.getElementById('tolerance').value/100;
-  const known=getKnownDescriptors();
+  // ── Faces ──────────────────────────────────────────────────────────────────
+  for(const f of (faces||[])){
+    const [nx0,ny0,nx1,ny1] = f.box;
+    const x=nx0*W, y=ny0*H, w=(nx1-nx0)*W, h=(ny1-ny0)*H;
+    const color = f.known ? '#00ffaa' : '#ff4444';
 
-  for(const det of detections){
-    const box=det.detection.box;
-    const x=box.x*scaleX, y=box.y*scaleY, w=box.width*scaleX, h=box.height*scaleY;
-
-    let label='Unknown', isKnown=false;
-    if(known.length){
-      const distances=known.map(k=>faceapi.euclideanDistance(det.descriptor,k.descriptor));
-      const minIdx=distances.indexOf(Math.min(...distances));
-      if(distances[minIdx]<=tol){ label=known[minIdx].name; isKnown=true; }
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
+    const barH=26;
+    ctx.fillStyle=color; ctx.fillRect(x, y+h-barH, w, barH);
+    ctx.fillStyle='#000'; ctx.font='bold 13px Rajdhani,sans-serif';
+    ctx.fillText(f.name, x+6, y+h-8);
+    if(f.known){
+      ctx.fillStyle=color; ctx.font='11px Share Tech Mono,monospace';
+      ctx.fillText(`Match: ${Math.round(f.conf*100)}%`, x+4, y-6);
     }
+  }
 
-    const color=isKnown?'#00ffaa':'#ff4444';
+  // ── Anomalies ──────────────────────────────────────────────────────────────
+  const THREAT_COLORS = {knife:'#ff6b00', gun:'#ff0000', fire:'#ff6b00', smoke:'#aaaaaa'};
+  for(const a of (anomalies||[])){
+    const [nx0,ny0,nx1,ny1] = a.box;
+    const x=nx0*W, y=ny0*H, w=(nx1-nx0)*W, h=(ny1-ny0)*H;
+    const color = THREAT_COLORS[a.label.toLowerCase()] || '#ff6b00';
 
-    // Rectangle
-    ctx.strokeStyle=color; ctx.lineWidth=2;
-    ctx.strokeRect(x,y,w,h);
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
+    const label = `${a.label.toUpperCase()} ${Math.round(a.conf*100)}%`;
+    const barH=24;
+    ctx.fillStyle=color; ctx.fillRect(x, y, w, barH);
+    ctx.fillStyle='#fff'; ctx.font='bold 12px Share Tech Mono,monospace';
+    ctx.fillText(label, x+4, y+16);
+  }
+}
 
-    // Filled label bar (bottom)
-    const barH=28;
-    ctx.fillStyle=color;
-    ctx.fillRect(x,y+h-barH,w,barH);
-    ctx.fillStyle='#fff';
-    ctx.font='bold 13px Rajdhani,sans-serif';
-    ctx.fillText(label, x+6, y+h-8);
+function updateStatusCards(faces, anomalies){
+  if(!faces.length){
+    setIdentityCard('unknown','NO FACE DETECTED');
+  } else {
+    const primary = faces[0];
+    setIdentityCard(primary.known?'known':'unknown',
+      primary.known ? primary.name.toUpperCase() : 'UNKNOWN');
+  }
 
-    // Confidence at top
-    if(isKnown){
-      const conf=known.length?Math.max(0,(1-Math.min(...known.map(k=>faceapi.euclideanDistance(det.descriptor,k.descriptor))))*100).toFixed(0):0;
-      ctx.fillStyle=color;
-      ctx.font='11px Share Tech Mono,monospace';
-      ctx.fillText(`Match: ${conf}%`, x+4, y-6);
-    }
+  const threats = (anomalies||[]).filter(a=>['knife','gun'].includes(a.label.toLowerCase()));
+  if(threats.length){
+    setAnomalyCard('threat', `⚠ ${threats.map(t=>t.label.toUpperCase()).join(', ')} DETECTED`);
+  } else if(anomalies.length){
+    setAnomalyCard('threat', anomalies.map(a=>`${a.label.toUpperCase()}`).join(', '));
+  } else {
+    setAnomalyCard('clear','✓ CLEAR');
   }
 }
 
@@ -881,62 +880,81 @@ function clearCanvas(){
 // UPLOAD IMAGE RECOGNITION
 // ─────────────────────────────────────
 async function handleUpload(e){
-  const file=e.target.files[0]; if(!file) return;
-  const url=URL.createObjectURL(file);
-  const uploadCanvas=document.getElementById('upload-canvas');
-  const uploadZone=document.querySelector('.upload-zone');
+  const file = e.target.files[0]; if(!file) return;
+  const uploadCanvas = document.getElementById('upload-canvas');
+  const uploadZone   = document.querySelector('.upload-zone');
 
-  const img=new Image();
-  img.onload=async ()=>{
-    uploadCanvas.width=img.naturalWidth;
-    uploadCanvas.height=img.naturalHeight;
-    const ctx=uploadCanvas.getContext('2d');
+  const dataUrl = await new Promise(res=>{ const r=new FileReader(); r.onload=ev=>res(ev.target.result); r.readAsDataURL(file); });
+  const img = new Image();
+  img.onload = async ()=>{
+    uploadCanvas.width=img.naturalWidth; uploadCanvas.height=img.naturalHeight;
+    const ctx = uploadCanvas.getContext('2d');
     ctx.drawImage(img,0,0);
-    uploadCanvas.style.display='block';
-    uploadZone.style.display='none';
+    uploadCanvas.style.display='block'; uploadZone.style.display='none';
 
-    if(!modelsReady){
-      setUploadCards('unknown','MODELS LOADING…','','CLEAR');
-      return;
-    }
+    const idCard   = document.getElementById('upload-identity-card');
+    const anomCard = document.getElementById('upload-anomaly-card');
+    idCard.innerHTML   = '<div class="s-label">// biometric identity</div><div class="s-value" style="color:var(--muted)">SCANNING…</div>';
+    anomCard.innerHTML = '<div class="s-label">// anomaly scan</div><div class="s-value" style="color:var(--muted)">SCANNING…</div>';
 
-    const tol=document.getElementById('tolerance').value/100;
-    const detections=await faceapi.detectAllFaces(img, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks(true).withFaceDescriptors();
-    const known=getKnownDescriptors();
+    const tol      = document.getElementById('tolerance').value / 100;
+    const anomConf = document.getElementById('anomaly-conf').value / 100;
 
-    // Draw on canvas
-    let primaryName='Unknown', primaryKnown=false;
-    for(const det of detections){
-      const box=det.detection.box;
-      let label='Unknown', isKnown=false;
-      if(known.length){
-        const dists=known.map(k=>faceapi.euclideanDistance(det.descriptor,k.descriptor));
-        const mi=dists.indexOf(Math.min(...dists));
-        if(dists[mi]<=tol){ label=known[mi].name; isKnown=true; }
+    try {
+      const resp = await fetch(`${API}/detect`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({frame: dataUrl, tolerance: tol, anomaly_conf: anomConf})
+      });
+      const data = await resp.json();
+      const W = uploadCanvas.width, H = uploadCanvas.height;
+
+      // Draw faces
+      for(const f of (data.faces||[])){
+        const [nx0,ny0,nx1,ny1]=f.box;
+        const x=nx0*W,y=ny0*H,w=(nx1-nx0)*W,h=(ny1-ny0)*H;
+        const color=f.known?'#00ffaa':'#ff4444';
+        ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
+        ctx.fillStyle=color; ctx.fillRect(x,y+h-28,w,28);
+        ctx.fillStyle='#000'; ctx.font='bold 14px Rajdhani,sans-serif';
+        ctx.fillText(f.name,x+6,y+h-8);
       }
-      if(det===detections[0]){ primaryName=label; primaryKnown=isKnown; }
-      const color=isKnown?'#00ffaa':'#ff4444';
-      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(box.x,box.y,box.width,box.height);
-      ctx.fillStyle=color; ctx.fillRect(box.x,box.y+box.height-28,box.width,28);
-      ctx.fillStyle='#fff'; ctx.font='bold 14px Rajdhani,sans-serif';
-      ctx.fillText(label, box.x+6, box.y+box.height-8);
-    }
-
-    // Update cards
-    const idCard=document.getElementById('upload-identity-card');
-    const anomCard=document.getElementById('upload-anomaly-card');
-    if(!detections.length){
+      // Draw anomalies
+      const THREAT_COLORS={knife:'#ff6b00',gun:'#ff0000',fire:'#ff6b00',smoke:'#aaaaaa'};
+      for(const a of (data.anomalies||[])){
+        const [nx0,ny0,nx1,ny1]=a.box;
+        const x=nx0*W,y=ny0*H,w=(nx1-nx0)*W,h=(ny1-ny0)*H;
+        const color=THREAT_COLORS[a.label.toLowerCase()]||'#ff6b00';
+        ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
+        ctx.fillStyle=color; ctx.fillRect(x,y,w,24);
+        ctx.fillStyle='#fff'; ctx.font='bold 12px Share Tech Mono,monospace';
+        ctx.fillText(`${a.label.toUpperCase()} ${Math.round(a.conf*100)}%`,x+4,y+16);
+      }
+      // Update cards
+      const primary = (data.faces||[])[0];
+      if(!primary){
+        idCard.className='s-card unknown';
+        idCard.innerHTML='<div class="s-label">// biometric identity</div><div class="s-value unknown">NO FACE FOUND</div>';
+      } else {
+        idCard.className=`s-card ${primary.known?'known':'unknown'}`;
+        idCard.innerHTML=`<div class="s-label">// biometric identity</div><div class="s-value ${primary.known?'known':'unknown'}">${primary.name.toUpperCase()}</div>`;
+      }
+      const threats=(data.anomalies||[]).filter(a=>['knife','gun'].includes(a.label.toLowerCase()));
+      if(threats.length){
+        anomCard.className='s-card threat';
+        anomCard.innerHTML=`<div class="s-label">// anomaly scan</div><div class="s-value threat">⚠ ${threats.map(t=>t.label.toUpperCase()).join(', ')}</div>`;
+      } else if((data.anomalies||[]).length){
+        anomCard.className='s-card threat';
+        anomCard.innerHTML=`<div class="s-label">// anomaly scan</div><div class="s-value threat">${data.anomalies.map(a=>a.label.toUpperCase()).join(', ')}</div>`;
+      } else {
+        anomCard.className='s-card clear';
+        anomCard.innerHTML='<div class="s-label">// anomaly scan</div><div class="s-value clear">✓ CLEAR</div>';
+      }
+    } catch(err){
       idCard.className='s-card unknown';
-      idCard.innerHTML='<div class="s-label">// biometric identity</div><div class="s-value unknown">NO FACE FOUND</div>';
-    } else {
-      idCard.className=`s-card ${primaryKnown?'known':'unknown'}`;
-      idCard.innerHTML=`<div class="s-label">// biometric identity</div><div class="s-value ${primaryKnown?'known':'unknown'}">${primaryName.toUpperCase()}</div>`;
+      idCard.innerHTML='<div class="s-label">// biometric identity</div><div class="s-value unknown">BACKEND OFFLINE</div>';
     }
-    anomCard.className='s-card clear';
-    anomCard.innerHTML='<div class="s-label">// anomaly scan</div><div class="s-value clear">✓ CLEAR</div>';
   };
-  img.src=url;
+  img.src = dataUrl;
 }
 </script>
 </body>
