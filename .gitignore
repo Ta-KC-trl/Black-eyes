@@ -42,6 +42,9 @@ desktop.ini
 runs/
 *.zip
 
+# Unused UI assets (not referenced in code)
+Background/
+
 # Model weights are tracked via Git LFS (.gitattributes), NOT ignored here
 
 # Training / validation dataset images (download separately)

@@ -30,8 +30,7 @@ else:
     with open(_CONFIG_PATH, "r") as _f:
         _cfg = yaml.safe_load(_f)
 
-PKL_PATH    = os.path.join(_BASE, _cfg["PATH"].get("PKL_PATH", "dataset/database.pkl"))
-DATASET_DIR = os.path.join(_BASE, _cfg["PATH"].get("DATASET_DIR", "dataset/"))
+PKL_PATH = os.path.join(_BASE, _cfg["PATH"].get("PKL_PATH", "dataset/database.pkl"))
 
 # ── Fallback Detector ────────────────────────────────────────────────────────
 _CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -52,14 +51,6 @@ def _save_database(db):
         pkl.dump(db, f)
 
 # ── Detection & Recognition Logic ───────────────────────────────────────────
-
-def isFaceExists(image):
-    if FACE_RECOG_AVAILABLE:
-        return len(face_recognition.face_locations(image)) > 0
-    else:
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-        faces = _face_cascade.detectMultiScale(gray, 1.1, 5)
-        return len(faces) > 0
 
 # Module-level DB cache: (mtime, database_dict)
 _db_cache: tuple = (None, {})

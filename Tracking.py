@@ -1,36 +1,24 @@
-"""
-Tracking.py — Unified professional UI with enhanced Face + Anomaly detection.
-Now uses YOLOv11 and face_recognition for 128-d embeddings.
-"""
-
 import streamlit as st
 import cv2
 from ultralytics import YOLO
 import numpy as np
 import os
-import base64
 import yaml
-from utils import recognize, submitNew, get_info_from_id, deleteOne, get_database
+from utils import recognize, submitNew, deleteOne, get_database
 
-# ── Paths ───────────────────────────────────────────────────────────────────
 _BASE = os.path.dirname(os.path.abspath(__file__))
 _CONFIG_PATH = os.path.join(_BASE, "config.yaml")
 
 if not os.path.exists(_CONFIG_PATH):
-    # Fallback/Default config
     _cfg = {
         "YOLO": {"MODEL_PATH": "models/best.pt"},
-        "DETECTION": {"FACE_TOLERANCE": 0.4}
+        "DETECTION": {"FACE_TOLERANCE": 0.4, "ANOMALY_TOLERANCE": 0.5}
     }
 else:
     with open(_CONFIG_PATH, "r") as _f:
         _cfg = yaml.safe_load(_f)
 
-# Use paths from config or defaults
-YOLO_MODEL_PATH  = os.path.join(_BASE, _cfg["YOLO"].get("MODEL_PATH", "models/best.pt"))
-# Ensure assets and sample images path
-ASSETS_DIR       = os.path.join(_BASE, "assets")
-SAMPLE_IMAGE_DIR = os.path.join(_BASE, "Sample_images") # Standard location
+YOLO_MODEL_PATH = os.path.join(_BASE, _cfg["YOLO"].get("MODEL_PATH", "models/best.pt"))
 
 st.set_page_config(page_title="Black Eyes", layout="wide", page_icon="👁️",
                    initial_sidebar_state="expanded")

@@ -93,8 +93,7 @@ Black-eyes/
 ├── dataset/
 │   ├── data.yaml        # Dataset class definitions for training
 │   └── database.pkl     # Face encoding store — gitignored (auto-created at runtime)
-├── Sample_images/       # Demo images for the upload mode
-├── Background/          # UI background assets
+├── Sample_images/       # Demo images for testing the upload mode
 ├── .gitignore
 ├── LICENSE
 └── README.md
