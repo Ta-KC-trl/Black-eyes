@@ -403,12 +403,16 @@
 
           <!-- Webcam mode -->
           <div id="reg-webcam-panel" style="display:none">
-            <video id="reg-cam" autoplay playsinline muted style="width:100%;border-radius:6px;border:1px solid #0f2a4a;display:none;max-height:260px;object-fit:cover"></video>
-            <div id="reg-cam-placeholder" style="width:100%;height:180px;background:#050b18;border:1px solid #0f2a4a;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#1a4a6a;font-size:13px;letter-spacing:2px">// WEBCAM OFFLINE</div>
-            <div style="display:flex;gap:8px;margin-top:8px">
-              <button class="btn-submit" id="reg-cam-start" onclick="startRegCam()" style="flex:1;padding:8px 0">START CAM</button>
-              <button class="btn-submit" id="reg-cam-capture" onclick="captureRegFrame()" style="flex:1;padding:8px 0;display:none">CAPTURE</button>
-              <button class="btn-delete" id="reg-cam-stop" onclick="stopRegCam()" style="flex:1;padding:8px 0;display:none">STOP</button>
+            <div style="width:100%;max-width:420px;margin:0 auto">
+              <div style="position:relative;width:100%;padding-top:75%;background:#050b18;border:1px solid #0f2a4a;border-radius:6px;overflow:hidden">
+                <video id="reg-cam" autoplay playsinline muted style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:none;border-radius:6px"></video>
+                <div id="reg-cam-placeholder" style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#1a4a6a;font-size:13px;letter-spacing:2px">// WEBCAM OFFLINE</div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px;max-width:420px">
+                <button class="btn-submit" id="reg-cam-start" onclick="startRegCam()" style="flex:1;padding:8px 0;font-size:12px">START CAM</button>
+                <button class="btn-submit" id="reg-cam-capture" onclick="captureRegFrame()" style="flex:1;padding:8px 0;font-size:12px;display:none">CAPTURE</button>
+                <button class="btn-delete" id="reg-cam-stop" onclick="stopRegCam()" style="flex:1;padding:8px 0;font-size:12px;display:none">STOP</button>
+              </div>
             </div>
           </div>
 
