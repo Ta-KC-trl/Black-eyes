@@ -260,7 +260,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     st.markdown('<div class="nav-section">// navigation</div>', unsafe_allow_html=True)
-    page = st.radio("", ["TRACKING", "DATABASE", "MANAGEMENT"], label_visibility="collapsed")
+    page = st.radio("Navigation", ["TRACKING", "DATABASE", "MANAGEMENT"], label_visibility="collapsed")
 
     st.markdown('<div class="nav-section">// settings</div>', unsafe_allow_html=True)
     TOLERANCE = st.slider("Match Tolerance", 0.1, 1.0, _cfg["DETECTION"].get("FACE_TOLERANCE", 0.4), 0.05)
