@@ -38,15 +38,11 @@ desktop.ini
 # Logs
 *.log
 
-# Training artifacts (not needed at runtime)
+# Training artifacts
 runs/
 *.zip
-*.pt
-*.weights
-*.onnx
 
-# Model weights directory (binaries too large for git)
-models/
+# Model weights are tracked via Git LFS (.gitattributes), NOT ignored here
 
 # Training / validation dataset images (download separately)
 dataset/valid/
