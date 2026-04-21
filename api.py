@@ -79,7 +79,7 @@ def detect():
                 known_meta.append({"name": p["name"], "id": p["id"]})
 
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        locs = face_recognition.face_locations(rgb, model="hog")
+        locs = face_recognition.face_locations(rgb, model="cnn")
         encs = face_recognition.face_encodings(rgb, locs)
 
         for (top, right, bottom, left), enc in zip(locs, encs):
