@@ -44,3 +44,18 @@ runs/
 *.pt
 *.weights
 *.onnx
+
+# Model weights directory (binaries too large for git)
+models/
+
+# Training / validation dataset images (download separately)
+dataset/valid/
+dataset/train/
+
+# Face database (sensitive — contains user encodings)
+dataset/database.pkl
+
+# Sample face images used for registration demo (personal data)
+dataset/*.jpg
+dataset/*.jpeg
+dataset/*.png

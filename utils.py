@@ -61,68 +61,90 @@ def isFaceExists(image):
         faces = _face_cascade.detectMultiScale(gray, 1.1, 5)
         return len(faces) > 0
 
+# Module-level DB cache: (mtime, database_dict)
+_db_cache: tuple = (None, {})
+
+def get_database_cached():
+    """Return the database, reloading from disk only when the file changes."""
+    global _db_cache
+    if not os.path.exists(PKL_PATH):
+        return {}
+    mtime = os.path.getmtime(PKL_PATH)
+    if _db_cache[0] == mtime:
+        return _db_cache[1]
+    db = get_database()
+    _db_cache = (mtime, db)
+    return db
+
 def recognize(image, tolerance=0.5):
-    database = get_database()
+    database = get_database_cached()
+    # name/person_id reflect the PRIMARY (first) detected face for UI display
     name = person_id = "Unknown"
-    
+
     if FACE_RECOG_AVAILABLE:
-        # Professional 128-d Embedding Logic
         face_locations = face_recognition.face_locations(image)
         face_encodings = face_recognition.face_encodings(image, face_locations)
-        
+
         known_encodings = []
         known_metadata  = []
-        for idx, p in database.items():
-            if "encoding" in p:
-                known_encodings.append(p["encoding"])
+        for p in database.values():
+            enc = p.get("encoding")
+            if enc is not None and len(enc) == 128:
+                known_encodings.append(enc)
                 known_metadata.append((p["name"], p["id"]))
 
+        first_face = True
         for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-            name = person_id = "Unknown"
+            face_name = face_pid = "Unknown"
             best_sim = 0.0
-            
+
             if known_encodings:
                 face_distances = face_recognition.face_distance(known_encodings, face_encoding)
-                best_match_index = np.argmin(face_distances)
-                best_sim = 1.0 - face_distances[best_match_index]
-                
-                if face_distances[best_match_index] <= tolerance:
-                    name, person_id = known_metadata[best_match_index]
+                best_idx = np.argmin(face_distances)
+                best_sim = 1.0 - face_distances[best_idx]
+                if face_distances[best_idx] <= tolerance:
+                    face_name, face_pid = known_metadata[best_idx]
 
-            color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
+            if first_face:
+                name, person_id = face_name, face_pid
+                first_face = False
+
+            color = (0, 255, 0) if face_name != "Unknown" else (0, 0, 255)
             cv2.rectangle(image, (left, top), (right, bottom), color, 2)
             cv2.rectangle(image, (left, bottom - 35), (right, bottom), color, cv2.FILLED)
-            cv2.putText(image, name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
-            
-            if name != "Unknown":
+            cv2.putText(image, face_name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+            if face_name != "Unknown":
                 cv2.putText(image, f"Match: {best_sim:.2f}", (left + 6, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
     else:
-        # Fallback OpenCV Logic
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         faces = _face_cascade.detectMultiScale(gray, 1.1, 5)
         sim_threshold = 1.0 - (tolerance * 0.5)
+        first_face = True
 
         for (x, y, w, h) in faces:
-            # Simple flattened check
             face_roi = cv2.resize(image[y:y+h, x:x+w], (64, 64))
             embedding = face_roi.astype(np.float32).flatten() / 255.0
-            
+
+            face_name = face_pid = "Unknown"
             best_sim = -1
-            for idx, person in database.items():
+            for person in database.values():
                 enc = person.get("encoding")
-                if enc is None or len(enc) != len(embedding): continue
-                # Simple cosine sim fallback
+                if enc is None or len(enc) != len(embedding):
+                    continue
                 norm = np.linalg.norm(embedding) * np.linalg.norm(enc)
                 sim = float(np.dot(embedding, enc) / norm) if norm != 0 else 0.0
-                
                 if sim > best_sim:
                     best_sim = sim
                     if sim >= sim_threshold:
-                        name, person_id = person["name"], person["id"]
+                        face_name, face_pid = person["name"], person["id"]
 
-            color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
+            if first_face:
+                name, person_id = face_name, face_pid
+                first_face = False
+
+            color = (0, 255, 0) if face_name != "Unknown" else (0, 0, 255)
             cv2.rectangle(image, (x, y), (x+w, y+h), color, 2)
-            cv2.putText(image, name, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
+            cv2.putText(image, face_name, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
 
     return image, name, person_id
 

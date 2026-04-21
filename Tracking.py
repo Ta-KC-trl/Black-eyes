@@ -241,7 +241,7 @@ def draw_yolo(frame, results):
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             conf  = box.conf[0].item()
             cls   = int(box.cls[0].item())
-            label = f"{yolo_model.model.names.get(cls, str(cls))}: {conf:.0%}"
+            label = f"{yolo_model.names.get(cls, str(cls))}: {conf:.0%}"
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 107, 0), 2)
             cv2.putText(frame, label, (x1+2, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 107, 0), 1)
     return frame
@@ -300,11 +300,11 @@ if page == "TRACKING":
             out_img_bgr  = cv2.cvtColor(out_img, cv2.COLOR_RGB2BGR)
             final_frame  = draw_yolo(out_img_bgr, yolo_results)
             
-            detections = [yolo_model.model.names.get(int(b.cls[0])) for r in yolo_results for b in r.boxes]
+            detections = [yolo_model.names.get(int(b.cls[0]), str(int(b.cls[0]))) for r in yolo_results for b in r.boxes]
             
             col1, col2 = st.columns([3,2])
             with col1:
-                st.image(cv2.cvtColor(final_frame, cv2.COLOR_BGR2RGB), use_column_width=True)
+                st.image(cv2.cvtColor(final_frame, cv2.COLOR_BGR2RGB), use_container_width=True)
             with col2:
                 # Identity card
                 _cls = "known" if name != "Unknown" else "unknown"
@@ -342,34 +342,38 @@ if page == "TRACKING":
 
         if st.session_state.cam_running:
             cap = cv2.VideoCapture(0)
-            while st.session_state.cam_running:
-                ret, frame = cap.read()
-                if not ret: break
+            try:
+                while st.session_state.cam_running:
+                    ret, frame = cap.read()
+                    if not ret:
+                        st.warning("Camera feed lost.")
+                        break
 
-                # Recognition (RGB)
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                out_img, name, pid = recognize(rgb, TOLERANCE)
+                    # Recognition (RGB)
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    out_img, name, pid = recognize(rgb, TOLERANCE)
 
-                # Anomaly (BGR)
-                results = yolo_model(frame, verbose=False, conf=ANOMALY_CONF, imgsz=640)
-                out_bgr = cv2.cvtColor(out_img, cv2.COLOR_RGB2BGR)
-                final   = draw_yolo(out_bgr, results)
-                final_rgb = cv2.cvtColor(final, cv2.COLOR_BGR2RGB)
+                    # Anomaly (BGR)
+                    results = yolo_model(frame, verbose=False, conf=ANOMALY_CONF, imgsz=640)
+                    out_bgr = cv2.cvtColor(out_img, cv2.COLOR_RGB2BGR)
+                    final   = draw_yolo(out_bgr, results)
+                    final_rgb = cv2.cvtColor(final, cv2.COLOR_BGR2RGB)
 
-                frame_ph.image(final_rgb, channels="RGB", use_column_width=True)
+                    frame_ph.image(final_rgb, channels="RGB", use_container_width=True)
 
-                # UI Updates
-                _cls = "known" if name != "Unknown" else "unknown"
-                identity_ph.markdown(f'<div class="s-card {_cls}"><div class="s-label">// identity</div><div class="s-value {_cls}">{name}</div></div>', unsafe_allow_html=True)
-                
-                detections = list(set([yolo_model.model.names.get(int(b.cls[0])) for r in results for b in r.boxes]))
-                if detections:
-                    threats_html = "".join([f'<div class="s-value threat" style="font-size:18px">⚠ {d.upper()}</div>' for d in detections])
-                    anomaly_ph.markdown(f'<div class="s-card threat"><div class="s-label">// anomalies</div>{threats_html}</div>', unsafe_allow_html=True)
-                else:
-                    anomaly_ph.markdown('<div class="s-card clear"><div class="s-label">// anomalies</div><div class="s-value clear" style="font-size:18px">✓ CLEAR</div></div>', unsafe_allow_html=True)
+                    # UI Updates
+                    _cls = "known" if name != "Unknown" else "unknown"
+                    identity_ph.markdown(f'<div class="s-card {_cls}"><div class="s-label">// identity</div><div class="s-value {_cls}">{name}</div></div>', unsafe_allow_html=True)
 
-            cap.release()
+                    detections = list(set([yolo_model.names.get(int(b.cls[0]), str(int(b.cls[0]))) for r in results for b in r.boxes]))
+                    if detections:
+                        threats_html = "".join([f'<div class="s-value threat" style="font-size:18px">⚠ {d.upper()}</div>' for d in detections])
+                        anomaly_ph.markdown(f'<div class="s-card threat"><div class="s-label">// anomalies</div>{threats_html}</div>', unsafe_allow_html=True)
+                    else:
+                        anomaly_ph.markdown('<div class="s-card clear"><div class="s-label">// anomalies</div><div class="s-value clear" style="font-size:18px">✓ CLEAR</div></div>', unsafe_allow_html=True)
+            finally:
+                cap.release()
+                st.session_state.cam_running = False
 
 elif page == "DATABASE":
     st.markdown('<div class="page-header"><div class="page-title">Identity Registry</div></div>', unsafe_allow_html=True)

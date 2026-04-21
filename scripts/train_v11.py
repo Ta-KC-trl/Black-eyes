@@ -12,9 +12,6 @@ _DEFAULT_BASE_MODEL = _cfg["YOLO"].get("BASE_MODEL", "yolo11n.pt")
 def train_knife_detection(data_yaml_path, epochs=100, model_type=None):
     if model_type is None:
         model_type = _DEFAULT_BASE_MODEL
-    """
-    Train a new knife/anomaly detection model using YOLOv11.
-    """
     print(f"--- Starting Training with YOLOv11 ---")
     model = YOLO(model_type)
     
