@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BLACK EYES — Surveillance Intelligence</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👁</text></svg>">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;600;700&family=Share+Tech+Mono&family=Exo+2:wght@200;300;400;600&display=swap');
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --green: #00ffaa;
+      --green-dim: #00ffaa22;
+      --green-border: #00ffaa33;
+      --red: #ff4444;
+      --orange: #ff6b00;
+      --bg: #030712;
+      --sidebar-bg: #050b18;
+      --card-bg: #070f1f;
+      --active-bg: #0a1628;
+      --border: #0f2a4a;
+      --text: #e2e8f0;
+      --muted: #334155;
+      --dim: #1e3a5f;
+    }
+
+    html { font-size: 14px; }
+    body { background: var(--bg); color: var(--text); font-family: 'Exo 2', sans-serif; overflow-x: hidden; }
+
+    /* ══ SCANLINES ══ */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,170,0.012) 2px, rgba(0,255,170,0.012) 4px);
+      pointer-events: none; z-index: 9999;
+    }
+
+    /* ══════════════════════════════════════
+       HERO
+    ══════════════════════════════════════ */
+    #bg { position: fixed; top:0; left:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+    #entry-overlay { position:fixed; inset:0; z-index:5; pointer-events:none; background:radial-gradient(circle at center, transparent 0%, #000 70%); opacity:0; }
+
+    #hero { height: 280vh; position: relative; z-index: 2; }
+    .hero-sticky {
+      position: sticky; top: 0; height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; pointer-events: none;
+    }
+    .hero-tag { font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:5px; color:var(--green); text-transform:uppercase; margin-bottom:20px; opacity:0; animation:fadeUp 1s .3s ease forwards; }
+    .hero-title { font-family:'Rajdhani',sans-serif; font-size:clamp(60px,11vw,130px); font-weight:700; letter-spacing:14px; text-transform:uppercase; line-height:.9; color:#fff; opacity:0; animation:fadeUp 1s .5s ease forwards; }
+    .hero-title .eye { color:var(--green); }
+    .hero-sub { font-family:'Exo 2',sans-serif; font-size:12px; font-weight:300; letter-spacing:4px; color:var(--muted); text-transform:uppercase; margin-top:24px; max-width:460px; line-height:1.9; opacity:0; animation:fadeUp 1s .7s ease forwards; }
+    .scroll-hint { position:absolute; bottom:44px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:8px; opacity:0; animation:fadeUp 1s 1.2s ease forwards; pointer-events:none; }
+    .scroll-hint-text { font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:4px; color:var(--muted); text-transform:uppercase; }
+    .scroll-line { width:1px; height:44px; background:linear-gradient(to bottom, var(--green), transparent); animation:scrollPulse 2s infinite; }
+    @keyframes scrollPulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
+    /* ══════════════════════════════════════
+       APP SHELL  (exact Tracking.py layout)
+    ══════════════════════════════════════ */
+    #app {
+      position: relative; z-index: 10;
+      display: flex; height: 100vh;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 240px; min-width: 240px;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      height: 100vh; overflow-y: auto;
+      position: sticky; top: 0;
+    }
+    .nav-logo { padding: 24px 20px 16px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+    .nav-logo-text { font-family:'Rajdhani',sans-serif; font-size:22px; font-weight:700; color:#f1f5f9; letter-spacing:4px; text-transform:uppercase; }
+    .nav-logo-sub { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--green); letter-spacing:3px; margin-top:2px; }
+
+    .nav-section { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--dim); letter-spacing:3px; text-transform:uppercase; padding:12px 20px 4px; }
+
+    .nav-items { padding: 0 8px; display: flex; flex-direction: column; gap: 2px; }
+    .nav-item {
+      font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:600; letter-spacing:2px;
+      text-transform:uppercase; color:#475569; padding:10px 16px; border-radius:6px;
+      cursor:pointer; border:none; background:transparent; text-align:left; width:100%;
+      transition: all .15s; border-left: 2px solid transparent;
+    }
+    .nav-item:hover { background:var(--active-bg); color:#94a3b8; }
+    .nav-item.active { background:var(--active-bg); color:var(--green); border-left-color:var(--green); }
+
+    /* sidebar controls */
+    .sidebar-controls { padding: 8px 20px 16px; display: flex; flex-direction: column; gap: 16px; }
+    .ctrl-label { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:6px; }
+    .ctrl-label span { color:var(--green); }
+    input[type=range] {
+      width:100%; accent-color:var(--green); height:3px;
+      background: linear-gradient(to right, var(--green) 0%, var(--green) var(--val, 43%), var(--dim) var(--val, 43%), var(--dim) 100%);
+      border-radius:2px; cursor:pointer;
+    }
+    .ctrl-select {
+      width:100%; background:var(--active-bg); border:1px solid var(--border);
+      color:#94a3b8; font-family:'Share Tech Mono',monospace; font-size:11px;
+      padding:6px 10px; border-radius:3px; cursor:pointer;
+    }
+    .sidebar-footer { margin-top:auto; padding:16px 20px; border-top:1px solid var(--border); font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--dim); line-height:2; }
+
+    /* ── Main content ── */
+    .main { flex:1; overflow-y:auto; padding:0 32px 96px; height:100vh; }
+
+    /* page header */
+    .page-header { display:flex; align-items:flex-start; justify-content:space-between; padding:28px 0 20px; border-bottom:1px solid var(--border); margin-bottom:24px; }
+    .page-title { font-family:'Rajdhani',sans-serif; font-size:32px; font-weight:700; color:#f1f5f9; letter-spacing:3px; text-transform:uppercase; line-height:1; }
+    .page-sub { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:3px; margin-top:6px; }
+    .live-badge { display:flex; align-items:center; gap:6px; background:var(--green-dim); border:1px solid var(--green-border); border-radius:20px; padding:6px 14px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--green); letter-spacing:2px; }
+    .live-dot { width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 6px var(--green); animation:blink 1.5s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* pages visibility + transition */
+    .page { display:none; }
+    .page.active { display:block; animation: pageIn .22s ease forwards; }
+    @keyframes pageIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+    /* ══ BOTTOM NAV PILL ══ */
+    .bottom-nav {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      z-index: 1000; display: flex; align-items: center; gap: 4px; padding: 6px;
+      background: rgba(5,11,24,0.90);
+      backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+      border: 1px solid var(--border); border-radius: 50px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,255,170,0.05);
+      /* hidden by default — JS adds .visible after scroll */
+      opacity: 0; visibility: hidden; pointer-events: none;
+      transition: opacity .35s ease, transform .35s ease, visibility 0s linear .35s;
+    }
+    .bottom-nav.visible {
+      opacity: 1; visibility: visible; pointer-events: auto;
+      transform: translateX(-50%) translateY(0);
+      transition: opacity .35s ease, transform .35s ease, visibility 0s linear 0s;
+    }
+
+    .pill-item {
+      font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:700; letter-spacing:2px;
+      text-transform:uppercase; padding:10px 24px; border-radius:40px;
+      cursor:pointer; border:none; background:transparent; color:#475569;
+      transition: all .2s ease; white-space:nowrap; position:relative;
+    }
+    .pill-item:hover { color:#94a3b8; background:rgba(255,255,255,0.05); }
+    .pill-item.active {
+      background: var(--green); color:#000;
+      box-shadow: 0 0 18px rgba(0,255,170,0.35);
+    }
+
+    /* ── Status cards (exact from Tracking.py) ── */
+    .s-card { border-radius:8px; padding:16px 18px; margin-bottom:10px; border:1px solid var(--border); background:var(--card-bg); }
+    .s-card.known  { border-color:var(--green-border); background:#00ffaa06; }
+    .s-card.unknown { border-color:#ff444433; background:#ff444406; }
+    .s-card.threat { border-color:#ff6b0033; background:#ff6b0006; animation:threatPulse 1.2s infinite; }
+    .s-card.clear  { border-color:var(--green-border); background:#00ffaa06; }
+    @keyframes threatPulse { 0%,100%{border-color:#ff6b0033} 50%{border-color:#ff6b00aa;box-shadow:0 0 16px #ff6b0022} }
+    .s-label { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--muted); letter-spacing:3px; text-transform:uppercase; margin-bottom:6px; }
+    .s-value { font-family:'Rajdhani',sans-serif; font-size:26px; font-weight:700; letter-spacing:1px; line-height:1.1; }
+    .s-value.known   { color:var(--green); }
+    .s-value.unknown { color:var(--red); }
+    .s-value.threat  { color:var(--orange); }
+    .s-value.clear   { color:var(--green); }
+
+    /* ── TRACKING page layout ── */
+    .tracking-grid { display:grid; grid-template-columns:3fr 2fr; gap:20px; }
+    .cam-wrapper { position:relative; background:#000; border:1px solid var(--border); border-radius:4px; overflow:hidden; aspect-ratio:4/3; }
+    #cam-video { width:100%; height:100%; object-fit:cover; display:block; }
+    #cam-canvas { position:absolute; top:0; left:0; width:100%; height:100%; }
+    .cam-corners .corner { position:absolute; width:18px; height:18px; border-color:var(--green); border-style:solid; opacity:.6; }
+    .cam-corners .tl { top:10px; left:10px; border-width:1px 0 0 1px; }
+    .cam-corners .tr { top:10px; right:10px; border-width:1px 1px 0 0; }
+    .cam-corners .bl { bottom:10px; left:10px; border-width:0 0 1px 1px; }
+    .cam-corners .br { bottom:10px; right:10px; border-width:0 1px 1px 0; }
+    .cam-rec { position:absolute; top:12px; right:40px; display:flex; align-items:center; gap:5px; }
+    .cam-rec-dot { width:6px; height:6px; border-radius:50%; background:var(--red); box-shadow:0 0 6px var(--red); animation:blink 1s infinite; }
+    .cam-rec-text { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--red); letter-spacing:2px; }
+    .cam-offline { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:10px; }
+    .cam-offline-icon { font-size:32px; opacity:.3; }
+    .cam-offline-text { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--muted); letter-spacing:3px; text-transform:uppercase; }
+
+    .control-bar { display:flex; gap:10px; margin-bottom:16px; }
+    .btn {
+      font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:700; letter-spacing:2px;
+      text-transform:uppercase; padding:9px 18px; border:1px solid; border-radius:3px;
+      cursor:pointer; transition:all .15s; background:transparent;
+    }
+    .btn-start { color:var(--green); border-color:var(--green-border); }
+    .btn-start:hover { background:var(--green); color:#000; }
+    .btn-stop  { color:var(--red); border-color:#ff444433; }
+    .btn-stop:hover  { background:var(--red); color:#000; }
+
+    /* Upload mode */
+    .upload-zone { border:1px dashed var(--border); border-radius:4px; padding:40px; text-align:center; cursor:pointer; transition:border-color .2s; background:var(--card-bg); }
+    .upload-zone:hover { border-color:var(--green); }
+    .upload-zone-icon { font-size:28px; margin-bottom:10px; }
+    .upload-zone-text { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; }
+    #upload-preview { width:100%; border-radius:4px; display:none; margin-bottom:12px; }
+    #file-input { display:none; }
+
+    /* ── DATABASE page ── */
+    .db-empty { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:2px; padding:24px; background:var(--card-bg); border:1px solid var(--border); border-radius:4px; }
+    .db-row { display:grid; grid-template-columns:80px 1fr; gap:16px; align-items:center; padding:16px 0; border-bottom:1px solid var(--border); }
+    .db-photo { width:70px; height:70px; border-radius:4px; object-fit:cover; background:var(--active-bg); display:flex; align-items:center; justify-content:center; font-size:28px; overflow:hidden; }
+    .db-photo img { width:100%; height:100%; object-fit:cover; }
+    .db-name { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:20px; color:var(--green); }
+    .db-id { font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--muted); margin-top:3px; }
+
+    /* ── MANAGEMENT page ── */
+    .tabs { display:flex; gap:0; margin-bottom:24px; border-bottom:1px solid var(--border); }
+    .tab { font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase; padding:12px 24px; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; transition:all .15s; background:transparent; border:none; border-bottom:2px solid transparent; }
+    .tab.active { color:var(--green); border-bottom-color:var(--green); }
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
+
+    .form-group { margin-bottom:18px; }
+    .form-label { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--muted); letter-spacing:3px; text-transform:uppercase; margin-bottom:8px; display:block; }
+    .form-input {
+      width:100%; background:var(--active-bg); border:1px solid var(--border);
+      color:var(--text); font-family:'Exo 2',sans-serif; font-size:14px;
+      padding:10px 14px; border-radius:3px; outline:none; transition:border-color .15s;
+    }
+    .form-input:focus { border-color:var(--green); }
+    .form-upload-btn { width:100%; background:var(--active-bg); border:1px dashed var(--border); color:var(--muted); font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:2px; text-transform:uppercase; padding:16px; border-radius:3px; cursor:pointer; transition:border-color .15s; text-align:center; }
+    .form-upload-btn:hover { border-color:var(--green); color:var(--green); }
+    #reg-preview { max-width:200px; border-radius:4px; margin:10px 0; display:none; }
+    #reg-file { display:none; }
+    .btn-submit { font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:700; letter-spacing:3px; text-transform:uppercase; padding:12px 32px; background:var(--green); color:#000; border:none; border-radius:3px; cursor:pointer; transition:opacity .15s; }
+    .btn-submit:hover { opacity:.85; }
+    .btn-delete { font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:700; letter-spacing:3px; text-transform:uppercase; padding:12px 32px; background:transparent; color:var(--red); border:1px solid #ff444433; border-radius:3px; cursor:pointer; transition:all .15s; }
+    .btn-delete:hover { background:var(--red); color:#fff; }
+
+    .alert { font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:2px; padding:12px 16px; border-radius:3px; margin-top:12px; }
+    .alert.success { background:#00ffaa06; border:1px solid var(--green-border); color:var(--green); }
+    .alert.error   { background:#ff444406; border:1px solid #ff444433; color:var(--red); }
+    .alert.hidden  { display:none; }
+
+    /* model loading banner */
+    #model-banner { position:fixed; bottom:20px; right:20px; z-index:100; background:var(--active-bg); border:1px solid var(--border); border-radius:4px; padding:12px 18px; font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; transition:opacity .5s; }
+    #model-banner.hidden { opacity:0; pointer-events:none; }
+  </style>
+</head>
+<body>
+
+<!-- ══ HERO ══ -->
+<canvas id="bg"></canvas>
+<div id="entry-overlay"></div>
+
+<section id="hero">
+  <div class="hero-sticky">
+    <div class="hero-tag">// v3.1.0 · surveillance intelligence</div>
+    <h1 class="hero-title">BLACK<br><span class="eye">EYES</span></h1>
+    <p class="hero-sub">Real-time face recognition &amp; anomaly detection<br>YOLOv11 · dlib 128-d embeddings · Streamlit</p>
+    <div class="scroll-hint">
+      <span class="scroll-hint-text">Scroll to enter</span>
+      <div class="scroll-line"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ APP (pixel-perfect replica of Tracking.py) ══ -->
+<div id="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="nav-logo">
+      <div class="nav-logo-text">👁 Black Eyes</div>
+      <div class="nav-logo-sub">● SYSTEM ONLINE</div>
+    </div>
+
+    <div class="nav-section">// settings</div>
+    <div class="sidebar-controls">
+      <div>
+        <div class="ctrl-label">Match Tolerance <span id="tol-val">0.40</span></div>
+        <input type="range" id="tolerance" min="10" max="100" value="40" oninput="updateSlider(this,'tol-val',100)">
+      </div>
+      <div>
+        <div class="ctrl-label">Anomaly Sensitivity <span id="anom-val">0.50</span></div>
+        <input type="range" id="anomaly-conf" min="10" max="90" value="50" oninput="updateSlider(this,'anom-val',100)">
+      </div>
+      <div>
+        <div class="ctrl-label">Input Source</div>
+        <select class="ctrl-select" id="input-src" onchange="switchInputMode()">
+          <option value="camera">Live Camera</option>
+          <option value="upload">Upload Image</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      BUILD v3.1.0 (PRODUCTION)<br>
+      ENGINE: YOLOv11 + FACE_RECOG<br>
+      STATUS: <span id="sys-status">IDLE</span>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- ── TRACKING PAGE ── -->
+    <div class="page active" id="page-tracking">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Live Surveillance</div>
+          <div class="page-sub">// dual mode: biometric identity + anomaly detection</div>
+        </div>
+        <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+      </div>
+
+      <!-- Camera mode -->
+      <div id="mode-camera">
+        <div class="control-bar">
+          <button class="btn btn-start" onclick="startCamera()">▶ START SYSTEM</button>
+          <button class="btn btn-stop"  onclick="stopCamera()">■ STOP SYSTEM</button>
+        </div>
+        <div class="tracking-grid">
+          <div>
+            <div class="cam-wrapper">
+              <div class="cam-offline" id="cam-offline">
+                <div class="cam-offline-icon">📷</div>
+                <div class="cam-offline-text">Camera offline · press start</div>
+              </div>
+              <video id="cam-video" autoplay muted playsinline style="display:none"></video>
+              <canvas id="cam-canvas"></canvas>
+              <div class="cam-corners">
+                <div class="corner tl"></div><div class="corner tr"></div>
+                <div class="corner bl"></div><div class="corner br"></div>
+              </div>
+              <div class="cam-rec" id="cam-rec" style="display:none">
+                <div class="cam-rec-dot"></div>
+                <span class="cam-rec-text">REC</span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="s-label" style="margin-bottom:10px">// control center</div>
+            <div class="s-card" id="identity-card">
+              <div class="s-label">// biometric identity</div>
+              <div class="s-value" style="color:var(--muted);font-size:18px">AWAITING FEED</div>
+            </div>
+            <div class="s-card" id="anomaly-card">
+              <div class="s-label">// anomaly scan</div>
+              <div class="s-value" style="color:var(--muted);font-size:18px">AWAITING FEED</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upload mode -->
+      <div id="mode-upload" style="display:none">
+        <div class="tracking-grid">
+          <div>
+            <img id="upload-preview" alt="uploaded frame">
+            <div class="upload-zone" onclick="document.getElementById('file-input').click()">
+              <div class="upload-zone-icon">📁</div>
+              <div class="upload-zone-text">Scan Static Frame — click to upload</div>
+              <div class="upload-zone-text" style="margin-top:4px;color:var(--dim)">JPG / PNG / JPEG</div>
+            </div>
+            <input type="file" id="file-input" accept=".jpg,.jpeg,.png" onchange="handleUpload(event)">
+            <canvas id="upload-canvas" style="width:100%;display:none;border-radius:4px;margin-top:-4px"></canvas>
+          </div>
+          <div>
+            <div class="s-card" id="upload-identity-card">
+              <div class="s-label">// biometric identity</div>
+              <div class="s-value" style="color:var(--muted);font-size:18px">UPLOAD AN IMAGE</div>
+            </div>
+            <div class="s-card" id="upload-anomaly-card">
+              <div class="s-label">// anomaly scan</div>
+              <div class="s-value clear">✓ CLEAR</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── DATABASE PAGE ── -->
+    <div class="page" id="page-database">
+      <div class="page-header">
+        <div class="page-title">Identity Registry</div>
+      </div>
+      <div id="db-content"></div>
+    </div>
+
+    <!-- ── MANAGEMENT PAGE ── -->
+    <div class="page" id="page-management">
+      <div class="page-header">
+        <div class="page-title">Registry Management</div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab(this,'tab-add')">Add Personnel</button>
+        <button class="tab" onclick="switchTab(this,'tab-remove')">Remove Personnel</button>
+      </div>
+
+      <div class="tab-panel active" id="tab-add">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input class="form-input" type="text" id="reg-name" placeholder="Full name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Employee ID</label>
+          <input class="form-input" type="text" id="reg-id" placeholder="Unique ID">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Image Source</label>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <button class="tab active" id="src-upload-btn" onclick="switchImgSrc('upload')" style="flex:1;padding:8px">Upload File</button>
+            <button class="tab" id="src-webcam-btn" onclick="switchImgSrc('webcam')" style="flex:1;padding:8px">Use Webcam</button>
+          </div>
+
+          <!-- Upload mode -->
+          <div id="reg-upload-panel">
+            <div class="form-upload-btn" onclick="document.getElementById('reg-file').click()">
+              📎 &nbsp;Choose image (JPG / PNG)
+            </div>
+            <input type="file" id="reg-file" accept=".jpg,.jpeg,.png" onchange="previewReg(event)">
+          </div>
+
+          <!-- Webcam mode -->
+          <div id="reg-webcam-panel" style="display:none">
+            <div style="width:100%;max-width:420px;margin:0 auto">
+              <div style="position:relative;width:100%;padding-top:75%;background:#050b18;border:1px solid #0f2a4a;border-radius:6px;overflow:hidden">
+                <video id="reg-cam" autoplay playsinline muted style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:none;border-radius:6px"></video>
+                <div id="reg-cam-placeholder" style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#1a4a6a;font-size:13px;letter-spacing:2px">// WEBCAM OFFLINE</div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px;max-width:420px">
+                <button class="btn-submit" id="reg-cam-start" onclick="startRegCam()" style="flex:1;padding:8px 0;font-size:12px">START CAM</button>
+                <button class="btn-submit" id="reg-cam-capture" onclick="captureRegFrame()" style="flex:1;padding:8px 0;font-size:12px;display:none">CAPTURE</button>
+                <button class="btn-delete" id="reg-cam-stop" onclick="stopRegCam()" style="flex:1;padding:8px 0;font-size:12px;display:none">STOP</button>
+              </div>
+            </div>
+          </div>
+
+          <img id="reg-preview" alt="preview">
+        </div>
+        <button class="btn-submit" onclick="registerPerson()">REGISTER</button>
+        <div class="alert hidden" id="reg-alert"></div>
+      </div>
+
+      <div class="tab-panel" id="tab-remove">
+        <div class="form-group">
+          <label class="form-label">ID to Remove</label>
+          <input class="form-input" type="text" id="del-id" placeholder="Employee ID">
+        </div>
+        <button class="btn-delete" onclick="deletePerson()">DELETE</button>
+        <div class="alert hidden" id="del-alert"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<nav class="bottom-nav">
+  <button class="pill-item active" onclick="navigate('tracking',this)">TRACKING</button>
+  <button class="pill-item" onclick="navigate('database',this)">DATABASE</button>
+  <button class="pill-item" onclick="navigate('management',this)">MANAGEMENT</button>
+</nav>
+
+<div id="model-banner">⬇ Loading face models…</div>
+
+<!-- ══════════════════════════════════════
+     SCRIPTS
+══════════════════════════════════════ -->
+<script>
+// ─────────────────────────────────────
+// THREE.JS HERO
+// ─────────────────────────────────────
+const canvas = document.getElementById('bg');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 1);
+
+const scene = new THREE.Scene();
+const camera3 = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, .01, 100);
+camera3.position.set(0,0,3.8);
+
+scene.add(new THREE.AmbientLight(0xffffff,.05));
+const pl1 = new THREE.PointLight(0x00ffaa,.3,20); pl1.position.set(3,3,3); scene.add(pl1);
+const pl2 = new THREE.PointLight(0xffffff,.2,20); pl2.position.set(-3,-2,2); scene.add(pl2);
+
+function noise3(x,y,z){
+  return (Math.sin(x*1.5)*Math.cos(y*1.2)*Math.sin(z*1.8)*.5
+         +Math.sin(x*3.1+1.1)*Math.cos(y*2.7+.5)*.25
+         +Math.sin(x*6.3+z*2.1)*Math.cos(y*5.5)*.125);
+}
+
+const blobGeo = new THREE.SphereGeometry(1.5,128,128);
+const origPos = new Float32Array(blobGeo.attributes.position.array);
+const blob = new THREE.Mesh(blobGeo, new THREE.MeshPhongMaterial({color:0x080808,transparent:true,opacity:.92,shininess:30,specular:new THREE.Color(.2,.2,.2)}));
+scene.add(blob);
+
+const fVert=`varying vec3 vN,vV;void main(){vN=normalize(normalMatrix*normal);vec4 m=modelViewMatrix*vec4(position,1.);vV=normalize(-m.xyz);gl_Position=projectionMatrix*m;}`;
+const fFrag=`varying vec3 vN,vV;void main(){float f=pow(1.-clamp(dot(vN,vV),0.,1.),2.5);gl_FragColor=vec4(1.,1.,1.,f*.85);}`;
+const fresnelShell=new THREE.Mesh(new THREE.SphereGeometry(1.52,64,64),new THREE.ShaderMaterial({vertexShader:fVert,fragmentShader:fFrag,transparent:true,depthWrite:false}));
+scene.add(fresnelShell);
+
+const innerGlow=new THREE.Mesh(new THREE.SphereGeometry(1.6,32,32),new THREE.ShaderMaterial({vertexShader:fVert,fragmentShader:`varying vec3 vN,vV;void main(){float f=pow(1.-clamp(dot(vN,vV),0.,1.),4.);gl_FragColor=vec4(0.,1.,.67,f*.25);}`,transparent:true,side:THREE.BackSide,depthWrite:false}));
+scene.add(innerGlow);
+
+const tGroup=new THREE.Group();
+function rSphere(r){const t=Math.random()*Math.PI*2,p=Math.acos(2*Math.random()-1);return new THREE.Vector3(r*Math.sin(p)*Math.cos(t),r*Math.sin(p)*Math.sin(t),r*Math.cos(p));}
+for(let i=0;i<18;i++){const c=new THREE.QuadraticBezierCurve3(rSphere(1.5),rSphere(2.4+Math.random()*.6),rSphere(3.2+Math.random()*.8));const g=new THREE.BufferGeometry().setFromPoints(c.getPoints(60));tGroup.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.12+Math.random()*.12})));}
+scene.add(tGroup);
+
+const pCount=3000,pPos=new Float32Array(pCount*3);
+for(let i=0;i<pCount;i++){const v=rSphere(1.6+Math.random()*3.5);pPos[i*3]=v.x+(Math.random()-.5)*2;pPos[i*3+1]=v.y+(Math.random()-.5)*2;pPos[i*3+2]=v.z+(Math.random()-.5)*2;}
+const pGeo=new THREE.BufferGeometry();pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+const particles=new THREE.Points(pGeo,new THREE.PointsMaterial({color:0xffffff,size:.015,transparent:true,opacity:.4,sizeAttenuation:true}));
+scene.add(particles);
+
+let targetZ=3.8,curZ=3.8;
+const hero=document.getElementById('hero');
+const overlay=document.getElementById('entry-overlay');
+window.addEventListener('scroll',()=>{
+  const t=Math.max(0,Math.min(1,scrollY/(hero.offsetHeight-innerHeight)));
+  targetZ=3.8-t*4.5;
+  overlay.style.opacity=t>.5?(t-.5)*2*.85:0;
+  const s=1+t*.15;
+  blob.scale.setScalar(s);fresnelShell.scale.setScalar(s);innerGlow.scale.setScalar(s);tGroup.scale.setScalar(s);
+});
+
+const clk=new THREE.Clock();
+(function animate(){
+  requestAnimationFrame(animate);
+  const t=clk.getElapsedTime();
+  curZ+=(targetZ-curZ)*.06; camera3.position.z=curZ;
+  const pos=blobGeo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const ox=origPos[i*3],oy=origPos[i*3+1],oz=origPos[i*3+2];
+    const d=.22*noise3(ox+t*.18,oy+t*.14,oz+t*.21);
+    const l=Math.sqrt(ox*ox+oy*oy+oz*oz);
+    pos.array[i*3]=ox+(ox/l)*d;pos.array[i*3+1]=oy+(oy/l)*d;pos.array[i*3+2]=oz+(oz/l)*d;
+  }
+  pos.needsUpdate=true; blobGeo.computeVertexNormals();
+  blob.rotation.y=t*.08; blob.rotation.x=Math.sin(t*.05)*.15;
+  fresnelShell.rotation.copy(blob.rotation); innerGlow.rotation.copy(blob.rotation);
+  tGroup.rotation.y=t*.04; tGroup.rotation.x=Math.sin(t*.03)*.08;
+  particles.rotation.y=t*.012; particles.rotation.x=Math.sin(t*.008)*.05;
+  pl1.position.x=Math.sin(t*.3)*4; pl1.position.z=Math.cos(t*.3)*4;
+  renderer.render(scene,camera3);
+})();
+
+window.addEventListener('resize',()=>{
+  camera3.aspect=innerWidth/innerHeight; camera3.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+// ─────────────────────────────────────
+// BOTTOM NAV — show only once user has scrolled into #app
+// ─────────────────────────────────────
+(function(){
+  const nav = document.querySelector('.bottom-nav');
+  const app = document.getElementById('app');
+  if(!nav || !app) return;
+
+  // Force page to top so hero is always shown first on (re)load
+  if(history.scrollRestoration) history.scrollRestoration = 'manual';
+  window.scrollTo(0, 0);
+
+  function syncNav(){
+    // app.offsetTop = distance from document-top to #app (not affected by scroll)
+    // show pill once scroll reaches #app minus a small margin
+    if(window.scrollY >= app.offsetTop - 40){
+      nav.classList.add('visible');
+    } else {
+      nav.classList.remove('visible');
+    }
+  }
+
+  window.addEventListener('scroll', syncNav, { passive: true });
+  // Use rAF so layout is settled before first check
+  requestAnimationFrame(syncNav);
+})();
+
+// ─────────────────────────────────────
+// SLIDER HELPERS
+// ─────────────────────────────────────
+function updateSlider(el, labelId, divisor){
+  const v=(el.value/divisor).toFixed(2);
+  document.getElementById(labelId).textContent=v;
+  el.style.setProperty('--val', ((el.value-el.min)/(el.max-el.min)*100)+'%');
+}
+// init slider track fills
+document.querySelectorAll('input[type=range]').forEach(r=>{
+  r.style.setProperty('--val', ((r.value-r.min)/(r.max-r.min)*100)+'%');
+});
+
+// ─────────────────────────────────────
+// NAVIGATION
+// ─────────────────────────────────────
+function navigate(page, btn){
+  document.querySelectorAll('.pill-item').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const pg = document.getElementById('page-'+page);
+  pg.classList.add('active');
+  if(page==='database') renderDB();
+}
+
+function switchTab(btn, panelId){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(panelId).classList.add('active');
+}
+
+function switchInputMode(){
+  const src=document.getElementById('input-src').value;
+  document.getElementById('mode-camera').style.display=src==='camera'?'block':'none';
+  document.getElementById('mode-upload').style.display=src==='upload'?'block':'none';
+  if(src==='camera'&&isRunning) stopCamera();
+}
+
+// ─────────────────────────────────────
+// PYTHON BACKEND (api.py on :5000)
+// ─────────────────────────────────────
+const API = 'http://localhost:5000';
+let apiReady = false;
+
+async function checkAPI(){
+  const b = document.getElementById('model-banner');
+  try {
+    const r = await fetch(`${API}/status`);
+    const s = await r.json();
+    apiReady = true;
+    b.textContent = `✓ Backend ready — YOLO classes: ${s.yolo_classes.join(', ')}`;
+    setTimeout(()=>b.classList.add('hidden'), 3000);
+  } catch(e) {
+    b.textContent = '⚠ Backend offline — run: python api.py';
+    b.style.color = '#ff4444';
+    setTimeout(checkAPI, 3000);
+  }
+}
+
+window.addEventListener('load', checkAPI);
+
+// ─────────────────────────────────────
+// DATABASE — fetch from Python backend
+// ─────────────────────────────────────
+async function renderDB(){
+  const el = document.getElementById('db-content');
+  el.innerHTML = '<div class="db-empty">// LOADING…</div>';
+  try {
+    const r = await fetch(`${API}/db`);
+    const db = await r.json();
+    const keys = Object.keys(db);
+    if(!keys.length){
+      el.innerHTML='<div class="db-empty">// REGISTRY EMPTY — register subjects in the MANAGEMENT panel</div>';
+      return;
+    }
+    el.innerHTML = keys.map(k => {
+      const p = db[k];
+      const img = p.photo
+        ? `<img src="${p.photo}" style="width:70px;height:70px;object-fit:cover;border-radius:4px;">`
+        : `<div style="width:70px;height:70px;background:var(--active-bg);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:28px;">👤</div>`;
+      return `<div class="db-row">${img}<div><div class="db-name">${p.name}</div><div class="db-id">UUID: ${p.id}</div></div></div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="db-empty">// BACKEND OFFLINE — start api.py</div>';
+  }
+}
+
+// ─────────────────────────────────────
+// MANAGEMENT — REGISTER
+// ─────────────────────────────────────
+let regImgSrc='upload';
+let regCamStream=null;
+let regCapturedDataUrl=null;
+
+function switchImgSrc(mode){
+  regImgSrc=mode;
+  document.getElementById('reg-upload-panel').style.display=mode==='upload'?'block':'none';
+  document.getElementById('reg-webcam-panel').style.display=mode==='webcam'?'block':'none';
+  document.getElementById('src-upload-btn').classList.toggle('active',mode==='upload');
+  document.getElementById('src-webcam-btn').classList.toggle('active',mode==='webcam');
+  regCapturedDataUrl=null;
+  document.getElementById('reg-preview').style.display='none';
+  if(mode==='upload') stopRegCam();
+}
+
+async function startRegCam(){
+  try{
+    regCamStream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480},audio:false});
+    const v=document.getElementById('reg-cam');
+    v.srcObject=regCamStream; v.style.display='block';
+    document.getElementById('reg-cam-placeholder').style.display='none';
+    document.getElementById('reg-cam-start').style.display='none';
+    document.getElementById('reg-cam-capture').style.display='block';
+    document.getElementById('reg-cam-stop').style.display='block';
+  }catch(e){ alert('Camera access denied: '+e.message); }
+}
+
+function stopRegCam(){
+  if(regCamStream){ regCamStream.getTracks().forEach(t=>t.stop()); regCamStream=null; }
+  const v=document.getElementById('reg-cam');
+  v.srcObject=null; v.style.display='none';
+  document.getElementById('reg-cam-placeholder').style.display='flex';
+  document.getElementById('reg-cam-start').style.display='block';
+  document.getElementById('reg-cam-capture').style.display='none';
+  document.getElementById('reg-cam-stop').style.display='none';
+}
+
+function captureRegFrame(){
+  const v=document.getElementById('reg-cam');
+  const c=document.createElement('canvas');
+  c.width=v.videoWidth; c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0);
+  regCapturedDataUrl=c.toDataURL('image/jpeg',0.92);
+  const prev=document.getElementById('reg-preview');
+  prev.src=regCapturedDataUrl; prev.style.display='block';
+  stopRegCam();
+}
+
+function previewReg(e){
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    const img=document.getElementById('reg-preview');
+    img.src=ev.target.result; img.style.display='block';
+  };
+  r.readAsDataURL(f);
+}
+
+async function registerPerson(){
+  const name    = document.getElementById('reg-name').value.trim();
+  const id      = document.getElementById('reg-id').value.trim();
+  const alertEl = document.getElementById('reg-alert');
+  alertEl.className = 'alert hidden';
+  if(!name||!id){ showAlert(alertEl,'error','Fill in Name and ID.'); return; }
+
+  let photoDataUrl = null;
+  if(regImgSrc==='webcam'){
+    if(!regCapturedDataUrl){ showAlert(alertEl,'error','Capture a frame from webcam first.'); return; }
+    photoDataUrl = regCapturedDataUrl;
+  } else {
+    const file = document.getElementById('reg-file').files[0];
+    if(!file){ showAlert(alertEl,'error','Choose an image file.'); return; }
+    photoDataUrl = await new Promise(res=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsDataURL(file); });
+  }
+
+  showAlert(alertEl,'info','Processing…');
+  try {
+    const resp = await fetch(`${API}/register`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, id, photo: photoDataUrl})
+    });
+    const data = await resp.json();
+    if(!resp.ok){ showAlert(alertEl,'error', data.error||'Registration failed.'); return; }
+    showAlert(alertEl,'success','Subject authorized successfully.');
+    document.getElementById('reg-name').value='';
+    document.getElementById('reg-id').value='';
+    document.getElementById('reg-file').value='';
+    document.getElementById('reg-preview').style.display='none';
+    regCapturedDataUrl=null;
+  } catch(e){ showAlert(alertEl,'error','Backend offline — start api.py'); }
+}
+
+async function deletePerson(){
+  const id      = document.getElementById('del-id').value.trim();
+  const alertEl = document.getElementById('del-alert');
+  alertEl.className = 'alert hidden';
+  if(!id){ showAlert(alertEl,'error','Enter an ID.'); return; }
+  try {
+    const resp = await fetch(`${API}/unregister/${encodeURIComponent(id)}`, {method:'DELETE'});
+    const data = await resp.json();
+    if(!resp.ok){ showAlert(alertEl,'error', data.error||'Not found.'); return; }
+    showAlert(alertEl,'success','Subject removed.');
+    document.getElementById('del-id').value='';
+  } catch(e){ showAlert(alertEl,'error','Backend offline — start api.py'); }
+}
+
+function showAlert(el, type, msg){
+  el.className=`alert ${type}`; el.textContent=msg;
+  setTimeout(()=>el.className='alert hidden', 4000);
+}
+
+// ─────────────────────────────────────
+// CAMERA + FACE DETECTION LOOP
+// ─────────────────────────────────────
+let isRunning=false, stream=null, detectionLoop=null;
+
+async function startCamera(){
+  if(isRunning) return;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{width:1280,height:720}});
+    const video=document.getElementById('cam-video');
+    video.srcObject=stream; video.style.display='block';
+    document.getElementById('cam-offline').style.display='none';
+    document.getElementById('cam-rec').style.display='flex';
+    document.getElementById('sys-status').textContent='ACTIVE';
+    document.getElementById('sys-status').style.color='var(--green)';
+    isRunning=true;
+
+    video.addEventListener('loadedmetadata',()=>{
+      const c=document.getElementById('cam-canvas');
+      c.width=video.videoWidth; c.height=video.videoHeight;
+    });
+
+    // detection loop — runs every 300ms
+    detectionLoop=setInterval(()=>detectFrame(), 500);
+  } catch(e){
+    setIdentityCard('unknown','CAMERA DENIED');
+  }
+}
+
+function stopCamera(){
+  isRunning=false;
+  if(detectionLoop){ clearInterval(detectionLoop); detectionLoop=null; }
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  const video=document.getElementById('cam-video');
+  video.srcObject=null; video.style.display='none';
+  document.getElementById('cam-offline').style.display='flex';
+  document.getElementById('cam-rec').style.display='none';
+  document.getElementById('sys-status').textContent='IDLE';
+  document.getElementById('sys-status').style.color='';
+  clearCanvas();
+  setIdentityCard('','AWAITING FEED');
+  setAnomalyCard('','AWAITING FEED');
+}
+
+let _detecting = false;
+async function detectFrame(){
+  if(!isRunning || _detecting) return;
+  const video = document.getElementById('cam-video');
+  if(video.readyState < 2) return;
+
+  // Capture frame to canvas → base64
+  const cap = document.createElement('canvas');
+  cap.width = video.videoWidth; cap.height = video.videoHeight;
+  cap.getContext('2d').drawImage(video, 0, 0);
+  const frame = cap.toDataURL('image/jpeg', 0.7);
+
+  const tol      = document.getElementById('tolerance').value / 100;
+  const anomConf = document.getElementById('anomaly-conf').value / 100;
+
+  _detecting = true;
+  try {
+    const resp = await fetch(`${API}/detect`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({frame, tolerance: tol, anomaly_conf: anomConf})
+    });
+    const data = await resp.json();
+    drawDetections(video, data.faces, data.anomalies);
+    updateStatusCards(data.faces, data.anomalies);
+  } catch(e) {
+    setIdentityCard('unknown','BACKEND OFFLINE');
+  } finally {
+    _detecting = false;
+  }
+}
+
+function setIdentityCard(cls, text){
+  const card=document.getElementById('identity-card');
+  card.className='s-card'+(cls?' '+cls:'');
+  card.innerHTML=`<div class="s-label">// biometric identity</div><div class="s-value ${cls}" style="${!cls?'color:var(--muted);font-size:18px':''}"> ${text}</div>`;
+}
+function setAnomalyCard(cls, text){
+  const card=document.getElementById('anomaly-card');
+  card.className='s-card'+(cls?' '+cls:'');
+  card.innerHTML=`<div class="s-label">// anomaly scan</div><div class="s-value ${cls}" style="${!cls?'color:var(--muted);font-size:18px':''}">${text}</div>`;
+}
+
+function drawDetections(video, faces, anomalies){
+  const canvas = document.getElementById('cam-canvas');
+  const ctx    = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const W = canvas.width, H = canvas.height;
+
+  // ── Faces ──────────────────────────────────────────────────────────────────
+  for(const f of (faces||[])){
+    const [nx0,ny0,nx1,ny1] = f.box;
+    const x=nx0*W, y=ny0*H, w=(nx1-nx0)*W, h=(ny1-ny0)*H;
+    const color = f.known ? '#00ffaa' : '#ff4444';
+
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
+    const barH=26;
+    ctx.fillStyle=color; ctx.fillRect(x, y+h-barH, w, barH);
+    ctx.fillStyle='#000'; ctx.font='bold 13px Rajdhani,sans-serif';
+    ctx.fillText(f.name, x+6, y+h-8);
+    if(f.known){
+      ctx.fillStyle=color; ctx.font='11px Share Tech Mono,monospace';
+      ctx.fillText(`Match: ${Math.round(f.conf*100)}%`, x+4, y-6);
+    }
+  }
+
+  // ── Anomalies ──────────────────────────────────────────────────────────────
+  const THREAT_COLORS = {knife:'#ff6b00', gun:'#ff0000', fire:'#ff6b00', smoke:'#aaaaaa'};
+  for(const a of (anomalies||[])){
+    const [nx0,ny0,nx1,ny1] = a.box;
+    const x=nx0*W, y=ny0*H, w=(nx1-nx0)*W, h=(ny1-ny0)*H;
+    const color = THREAT_COLORS[a.label.toLowerCase()] || '#ff6b00';
+
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
+    const label = `${a.label.toUpperCase()} ${Math.round(a.conf*100)}%`;
+    const barH=24;
+    ctx.fillStyle=color; ctx.fillRect(x, y, w, barH);
+    ctx.fillStyle='#fff'; ctx.font='bold 12px Share Tech Mono,monospace';
+    ctx.fillText(label, x+4, y+16);
+  }
+}
+
+function updateStatusCards(faces, anomalies){
+  if(!faces.length){
+    setIdentityCard('unknown','NO FACE DETECTED');
+  } else {
+    const primary = faces[0];
+    setIdentityCard(primary.known?'known':'unknown',
+      primary.known ? primary.name.toUpperCase() : 'UNKNOWN');
+  }
+
+  const threats = (anomalies||[]).filter(a=>['knife','gun'].includes(a.label.toLowerCase()));
+  if(threats.length){
+    setAnomalyCard('threat', `⚠ ${threats.map(t=>t.label.toUpperCase()).join(', ')} DETECTED`);
+  } else if(anomalies.length){
+    setAnomalyCard('threat', anomalies.map(a=>`${a.label.toUpperCase()}`).join(', '));
+  } else {
+    setAnomalyCard('clear','✓ CLEAR');
+  }
+}
+
+function clearCanvas(){
+  const canvas=document.getElementById('cam-canvas');
+  canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+}
+
+// ─────────────────────────────────────
+// UPLOAD IMAGE RECOGNITION
+// ─────────────────────────────────────
+async function handleUpload(e){
+  const file = e.target.files[0]; if(!file) return;
+  const uploadCanvas = document.getElementById('upload-canvas');
+  const uploadZone   = document.querySelector('.upload-zone');
+
+  const dataUrl = await new Promise(res=>{ const r=new FileReader(); r.onload=ev=>res(ev.target.result); r.readAsDataURL(file); });
+  const img = new Image();
+  img.onload = async ()=>{
+    uploadCanvas.width=img.naturalWidth; uploadCanvas.height=img.naturalHeight;
+    const ctx = uploadCanvas.getContext('2d');
+    ctx.drawImage(img,0,0);
+    uploadCanvas.style.display='block'; uploadZone.style.display='none';
+
+    const idCard   = document.getElementById('upload-identity-card');
+    const anomCard = document.getElementById('upload-anomaly-card');
+    idCard.innerHTML   = '<div class="s-label">// biometric identity</div><div class="s-value" style="color:var(--muted)">SCANNING…</div>';
+    anomCard.innerHTML = '<div class="s-label">// anomaly scan</div><div class="s-value" style="color:var(--muted)">SCANNING…</div>';
+
+    const tol      = document.getElementById('tolerance').value / 100;
+    const anomConf = document.getElementById('anomaly-conf').value / 100;
+
+    try {
+      const resp = await fetch(`${API}/detect`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({frame: dataUrl, tolerance: tol, anomaly_conf: anomConf})
+      });
+      const data = await resp.json();
+      const W = uploadCanvas.width, H = uploadCanvas.height;
+
+      // Draw faces
+      for(const f of (data.faces||[])){
+        const [nx0,ny0,nx1,ny1]=f.box;
+        const x=nx0*W,y=ny0*H,w=(nx1-nx0)*W,h=(ny1-ny0)*H;
+        const color=f.known?'#00ffaa':'#ff4444';
+        ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
+        ctx.fillStyle=color; ctx.fillRect(x,y+h-28,w,28);
+        ctx.fillStyle='#000'; ctx.font='bold 14px Rajdhani,sans-serif';
+        ctx.fillText(f.name,x+6,y+h-8);
+      }
+      // Draw anomalies
+      const THREAT_COLORS={knife:'#ff6b00',gun:'#ff0000',fire:'#ff6b00',smoke:'#aaaaaa'};
+      for(const a of (data.anomalies||[])){
+        const [nx0,ny0,nx1,ny1]=a.box;
+        const x=nx0*W,y=ny0*H,w=(nx1-nx0)*W,h=(ny1-ny0)*H;
+        const color=THREAT_COLORS[a.label.toLowerCase()]||'#ff6b00';
+        ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
+        ctx.fillStyle=color; ctx.fillRect(x,y,w,24);
+        ctx.fillStyle='#fff'; ctx.font='bold 12px Share Tech Mono,monospace';
+        ctx.fillText(`${a.label.toUpperCase()} ${Math.round(a.conf*100)}%`,x+4,y+16);
+      }
+      // Update cards
+      const primary = (data.faces||[])[0];
+      if(!primary){
+        idCard.className='s-card unknown';
+        idCard.innerHTML='<div class="s-label">// biometric identity</div><div class="s-value unknown">NO FACE FOUND</div>';
+      } else {
+        idCard.className=`s-card ${primary.known?'known':'unknown'}`;
+        idCard.innerHTML=`<div class="s-label">// biometric identity</div><div class="s-value ${primary.known?'known':'unknown'}">${primary.name.toUpperCase()}</div>`;
+      }
+      const threats=(data.anomalies||[]).filter(a=>['knife','gun'].includes(a.label.toLowerCase()));
+      if(threats.length){
+        anomCard.className='s-card threat';
+        anomCard.innerHTML=`<div class="s-label">// anomaly scan</div><div class="s-value threat">⚠ ${threats.map(t=>t.label.toUpperCase()).join(', ')}</div>`;
+      } else if((data.anomalies||[]).length){
+        anomCard.className='s-card threat';
+        anomCard.innerHTML=`<div class="s-label">// anomaly scan</div><div class="s-value threat">${data.anomalies.map(a=>a.label.toUpperCase()).join(', ')}</div>`;
+      } else {
+        anomCard.className='s-card clear';
+        anomCard.innerHTML='<div class="s-label">// anomaly scan</div><div class="s-value clear">✓ CLEAR</div>';
+      }
+    } catch(err){
+      idCard.className='s-card unknown';
+      idCard.innerHTML='<div class="s-label">// biometric identity</div><div class="s-value unknown">BACKEND OFFLINE</div>';
+    }
+  };
+  img.src = dataUrl;
+}
+</script>
+</body>
+</html>

@@ -1,181 +1,182 @@
-import face_recognition as frg
+"""
+utils.py — Robust face detection, recognition, and database operations.
+Falls back to OpenCV Haar Cascades if face_recognition (dlib) is not installed.
+"""
+
 import pickle as pkl
 import os
 import cv2
 import numpy as np
 import yaml
-from collections import defaultdict
-from twilio.rest import Client
-import time
-import requests
-import streamlit as st  # Added for UI alerts
 
-# === CONFIGURATION PATHS ===
-PKL_PATH = r"D:\Black-Eyes-Intruders-detection-system-main\Blackeyes\dataset\database.pkl"
+# ── Face Recognition Imports & Availability ────────────────────────────────────
+try:
+    import face_recognition
+    FACE_RECOG_AVAILABLE = True
+except ImportError:
+    FACE_RECOG_AVAILABLE = False
 
-# Twilio credentials
-account_sid = 'ACe8d9a268e955157b9dbc87bd404a4d52'
-auth_token = 'f5e563b058b98906de0a2f03e0b2bc47'
-from_number = '+17623412432'
-to_number = '+918610926195'
+# ── Paths ───────────────────────────────────────────────────────────────────
+_BASE = os.path.dirname(os.path.abspath(__file__))
+_CONFIG_PATH = os.path.join(_BASE, "config.yaml")
 
-client = Client(account_sid, auth_token)
+if not os.path.exists(_CONFIG_PATH):
+    _cfg = {
+        "PATH": {"PKL_PATH": "dataset/database.pkl", "DATASET_DIR": "dataset/"},
+        "YOLO": {"MODEL_PATH": "models/best.pt"},
+        "DETECTION": {"ANOMALY_TOLERANCE": 0.6, "FACE_TOLERANCE": 0.4}
+    }
+else:
+    with open(_CONFIG_PATH, "r") as _f:
+        _cfg = yaml.safe_load(_f)
 
-alert_log = {}
-ALERT_INTERVAL = 60  # seconds
+PKL_PATH = os.path.join(_BASE, _cfg["PATH"].get("PKL_PATH", "dataset/database.pkl"))
 
-def send_alert(message):
-    try:
-        msg = client.messages.create(
-            body=message,
-            from_=from_number,
-            to=to_number
-        )
-        print(f"✅ Alert sent: {msg.sid}")
-        return True
-    except Exception as e:
-        print(f"❌ Error sending alert: {e}")
-        return False
+# ── Fallback Detector ────────────────────────────────────────────────────────
+_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+_face_cascade = cv2.CascadeClassifier(_CASCADE_PATH)
 
-def get_location():
-    try:
-        res = requests.get("https://ipinfo.io/json", timeout=5)
-        data = res.json()
-        city = data.get("city", "")
-        region = data.get("region", "")
-        country = data.get("country", "")
-        loc = data.get("loc", "")  # lat,long
-        return f"{city}, {region}, {country} (Coordinates: {loc})"
-    except Exception as e:
-        print(f"Location fetch failed: {e}")
-        return "Location unavailable"
+def get_database():
+    if not os.path.exists(PKL_PATH):
+        return {}
+    with open(PKL_PATH, "rb") as f:
+        try:
+            return pkl.load(f)
+        except Exception:
+            return {}
 
-def check_and_alert(name):
-    current_time = time.time()
-    if name == 'Unknown':
-        if current_time - alert_log.get(name, 0) > ALERT_INTERVAL:
-            location = get_location()
-            message = f"⚠️ Unknown face detected!\n📍 Location: {location}"
-            message_sent = send_alert(message)
-            if message_sent:
-                alert_log[name] = current_time
-                return True
-            else:
-                return False
-    return None
+def _save_database(db):
+    os.makedirs(os.path.dirname(PKL_PATH), exist_ok=True)
+    with open(PKL_PATH, "wb") as f:
+        pkl.dump(db, f)
 
-def send_anomaly_alert(anomaly_type):
-    location = get_location()
-    message = f"🚨 Anomaly Detected: {anomaly_type}\n📍 Location: {location}"
-    success = send_alert(message)
-    if success:
-        st.success(f"✅ Anomaly alert sent for {anomaly_type}")
+# ── Detection & Recognition Logic ───────────────────────────────────────────
+
+# Module-level DB cache: (mtime, database_dict)
+_db_cache: tuple = (None, {})
+
+def get_database_cached():
+    """Return the database, reloading from disk only when the file changes."""
+    global _db_cache
+    if not os.path.exists(PKL_PATH):
+        return {}
+    mtime = os.path.getmtime(PKL_PATH)
+    if _db_cache[0] == mtime:
+        return _db_cache[1]
+    db = get_database()
+    _db_cache = (mtime, db)
+    return db
+
+def recognize(image, tolerance=0.5):
+    database = get_database_cached()
+    # name/person_id reflect the PRIMARY (first) detected face for UI display
+    name = person_id = "Unknown"
+
+    if FACE_RECOG_AVAILABLE:
+        face_locations = face_recognition.face_locations(image)
+        face_encodings = face_recognition.face_encodings(image, face_locations)
+
+        known_encodings = []
+        known_metadata  = []
+        for p in database.values():
+            enc = p.get("encoding")
+            if enc is not None and len(enc) == 128:
+                known_encodings.append(enc)
+                known_metadata.append((p["name"], p["id"]))
+
+        first_face = True
+        for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+            face_name = face_pid = "Unknown"
+            best_sim = 0.0
+
+            if known_encodings:
+                face_distances = face_recognition.face_distance(known_encodings, face_encoding)
+                best_idx = np.argmin(face_distances)
+                best_sim = 1.0 - face_distances[best_idx]
+                if face_distances[best_idx] <= tolerance:
+                    face_name, face_pid = known_metadata[best_idx]
+
+            if first_face:
+                name, person_id = face_name, face_pid
+                first_face = False
+
+            color = (0, 255, 0) if face_name != "Unknown" else (0, 0, 255)
+            cv2.rectangle(image, (left, top), (right, bottom), color, 2)
+            cv2.rectangle(image, (left, bottom - 35), (right, bottom), color, cv2.FILLED)
+            cv2.putText(image, face_name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+            if face_name != "Unknown":
+                cv2.putText(image, f"Match: {best_sim:.2f}", (left + 6, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
     else:
-        st.error(f"❌ Failed to send anomaly alert for {anomaly_type}")
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        faces = _face_cascade.detectMultiScale(gray, 1.1, 5)
+        sim_threshold = 1.0 - (tolerance * 0.5)
+        first_face = True
 
-def get_databse():
-    with open(PKL_PATH, 'rb') as f:
-        database = pkl.load(f)
-    return database
+        for (x, y, w, h) in faces:
+            face_roi = cv2.resize(image[y:y+h, x:x+w], (64, 64))
+            embedding = face_roi.astype(np.float32).flatten() / 255.0
 
-def recognize(image, TOLERANCE):
-    database = get_databse()
-    known_encoding = [database[id]['encoding'] for id in database.keys()]
-    name = 'Unknown'
-    id = 'Unknown'
-    face_locations = frg.face_locations(image)
-    face_encodings = frg.face_encodings(image, face_locations)
+            face_name = face_pid = "Unknown"
+            best_sim = -1
+            for person in database.values():
+                enc = person.get("encoding")
+                if enc is None or len(enc) != len(embedding):
+                    continue
+                norm = np.linalg.norm(embedding) * np.linalg.norm(enc)
+                sim = float(np.dot(embedding, enc) / norm) if norm != 0 else 0.0
+                if sim > best_sim:
+                    best_sim = sim
+                    if sim >= sim_threshold:
+                        face_name, face_pid = person["name"], person["id"]
 
-    for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-        matches = frg.compare_faces(known_encoding, face_encoding, tolerance=TOLERANCE)
-        distance = frg.face_distance(known_encoding, face_encoding)
-        name = 'Unknown'
-        id = 'Unknown'
+            if first_face:
+                name, person_id = face_name, face_pid
+                first_face = False
 
-        if True in matches:
-            match_index = matches.index(True)
-            name = database[match_index]['name']
-            id = database[match_index]['id']
-            distance = round(distance[match_index], 2)
-            cv2.putText(image, str(distance), (left, top - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
+            color = (0, 255, 0) if face_name != "Unknown" else (0, 0, 255)
+            cv2.rectangle(image, (x, y), (x+w, y+h), color, 2)
+            cv2.putText(image, face_name, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
 
-        cv2.rectangle(image, (left, top), (right, bottom), (0, 255, 0), 2)
-        cv2.putText(image, name, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
+    return image, name, person_id
 
-    return image, name, id
-
-def isFaceExists(image):
-    face_location = frg.face_locations(image)
-    return len(face_location) > 0
-
-def submitNew(name, id, image, old_idx=None):
-    database = get_databse()
-
-    if type(image) != np.ndarray:
+def submitNew(name, person_id, image, old_idx=None):
+    database = get_database()
+    if not isinstance(image, np.ndarray):
         image = cv2.imdecode(np.frombuffer(image.read(), np.uint8), 1)
-
-    if not isFaceExists(image):
-        return -1
-
-    encoding = frg.face_encodings(image)[0]
-    existing_id = [database[i]['id'] for i in database.keys()]
-
-    if old_idx is not None:
-        new_idx = old_idx
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+    if FACE_RECOG_AVAILABLE:
+        face_locations = face_recognition.face_locations(image)
+        if len(face_locations) == 0: return -1
+        encoding = face_recognition.face_encodings(image, known_face_locations=[face_locations[0]])[0]
     else:
-        if id in existing_id:
-            return 0
-        new_idx = len(database)
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        faces = _face_cascade.detectMultiScale(gray, 1.1, 5)
+        if len(faces) == 0: return -1
+        x, y, w, h = faces[0]
+        face_roi = cv2.resize(image[y:y+h, x:x+w], (64, 64))
+        encoding = face_roi.astype(np.float32).flatten() / 255.0
 
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    database[new_idx] = {'image': image, 'id': id, 'name': name, 'encoding': encoding}
-
-    with open(PKL_PATH, 'wb') as f:
-        pkl.dump(database, f)
+    existing_ids = [database[i]["id"] for i in database]
+    idx = old_idx if old_idx is not None else len(database)
+    while old_idx is None and idx in database: idx += 1
+    if old_idx is None and person_id in existing_ids: return 0
+            
+    database[idx] = {"image": image, "id": person_id, "name": name, "encoding": encoding}
+    _save_database(database)
     return True
 
-def get_info_from_id(id):
-    database = get_databse()
-    for idx, person in database.items():
-        if person['id'] == id:
-            name = person['name']
-            image = person['image']
-            return name, image, idx
+def get_info_from_id(person_id):
+    database = get_database()
+    for idx, p in database.items():
+        if str(p["id"]) == str(person_id):
+            return p["name"], p["image"], idx
     return None, None, None
 
-def deleteOne(id):
-    database = get_databse()
-    id = str(id)
-    for key, person in list(database.items()):
-        if person['id'] == id:
-            del database[key]
-            break
-    with open(PKL_PATH, 'wb') as f:
-        pkl.dump(database, f)
-    return True
-
-# Placeholder for dataset builder (if needed)
-def build_dataset():
-    DATASET_DIR = r"D:\Black-Eyes-Intruders-detection-system-main\Blackeyes\dataset"
-    information = defaultdict(dict)
-    counter = 0
-    for image in os.listdir(DATASET_DIR):
-        image_path = os.path.join(DATASET_DIR, image)
-        image_name = image.split('.')[0]
-        parsed_name = image_name.split('_')
-        person_id = parsed_name[0]
-        person_name = ' '.join(parsed_name[1:])
-        if not image_path.endswith('.jpg'):
-            continue
-        image = frg.load_image_file(image_path)
-        information[counter]['image'] = image
-        information[counter]['id'] = person_id
-        information[counter]['name'] = person_name
-        information[counter]['encoding'] = frg.face_encodings(image)[0]
-        counter += 1
-
-    with open(os.path.join(DATASET_DIR, 'database.pkl'), 'wb') as f:
-        pkl.dump(information, f)
-
-if __name__ == "__main__":
-    deleteOne(4)
+def deleteOne(person_id):
+    database = get_database()
+    for key, p in list(database.items()):
+        if str(p["id"]) == str(person_id):
+            del database[key]; _save_database(database)
+            return True
+    return False

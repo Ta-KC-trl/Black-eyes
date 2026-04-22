@@ -1,0 +1,10 @@
+names:
+- fire
+- other
+- smoke
+- gun
+- knife
+nc: 5
+path: C:\Users\srira\Black-Eyes-with-anomaly-detection\dataset
+train: train/images
+val: valid/images

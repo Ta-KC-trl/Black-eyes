@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Cache
+.cache/
+*.cache
+
+# Streamlit
+.streamlit/
+
+# Environment
+.env
+*.env
+
+# Logs
+*.log
+
+# Training artifacts
+runs/
+*.zip
+
+# Unused UI assets (not referenced in code)
+Background/
+
+# Model weights are tracked via Git LFS (.gitattributes), NOT ignored here
+
+# Training / validation dataset images (download separately)
+dataset/valid/
+dataset/train/
+
+# Face database (sensitive — contains user encodings)
+dataset/database.pkl
+
+# Sample face images used for registration demo (personal data)
+dataset/*.jpg
+dataset/*.jpeg
+dataset/*.png
