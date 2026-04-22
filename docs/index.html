@@ -553,20 +553,22 @@ window.addEventListener('resize',()=>{
 });
 
 // ─────────────────────────────────────
-// BOTTOM NAV — show only after hero is fully scrolled past
+// BOTTOM NAV — show only once hero is fully above the viewport
 // ─────────────────────────────────────
 (function(){
   const nav  = document.querySelector('.bottom-nav');
   const hero = document.getElementById('hero');
   if(!nav || !hero) return;
   function syncNav(){
-    // show when scrolled at least 85% through the hero section
-    const threshold = hero.offsetHeight * 0.85;
-    if(window.scrollY >= threshold) nav.classList.add('visible');
-    else                            nav.classList.remove('visible');
+    // getBoundingClientRect().bottom = px distance from viewport-top to hero's bottom edge
+    // When this is <= 0 the entire hero has scrolled past — show the pill
+    const heroBtm = hero.getBoundingClientRect().bottom;
+    if(heroBtm <= 0) nav.classList.add('visible');
+    else             nav.classList.remove('visible');
   }
   window.addEventListener('scroll', syncNav, { passive: true });
-  syncNav(); // run once on load — scrollY=0 so stays hidden
+  window.addEventListener('resize', syncNav, { passive: true });
+  syncNav();
 })();
 
 // ─────────────────────────────────────
