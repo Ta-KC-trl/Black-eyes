@@ -129,15 +129,19 @@
 
     /* ══ BOTTOM NAV PILL ══ */
     .bottom-nav {
-      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(16px);
       z-index: 1000; display: flex; align-items: center; gap: 4px; padding: 6px;
       background: rgba(5,11,24,0.90);
       backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
       border: 1px solid var(--border); border-radius: 50px;
       box-shadow: 0 8px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,255,170,0.05);
-      transition: box-shadow .3s;
+      opacity: 0; pointer-events: none;
+      transition: opacity .35s ease, transform .35s ease, box-shadow .3s;
     }
-    .bottom-nav:hover { box-shadow: 0 8px 48px rgba(0,0,0,0.65), 0 0 0 1px rgba(0,255,170,0.10); }
+    .bottom-nav.visible {
+      opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0);
+    }
+    .bottom-nav.visible:hover { box-shadow: 0 8px 48px rgba(0,0,0,0.65), 0 0 0 1px rgba(0,255,170,0.10); }
 
     .pill-item {
       font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:700; letter-spacing:2px;
@@ -547,6 +551,20 @@ window.addEventListener('resize',()=>{
   camera3.aspect=innerWidth/innerHeight; camera3.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
 });
+
+// ─────────────────────────────────────
+// BOTTOM NAV — show only after scrolling into #app
+// ─────────────────────────────────────
+(function(){
+  const nav = document.querySelector('.bottom-nav');
+  const app = document.getElementById('app');
+  if(!nav || !app) return;
+  const obs = new IntersectionObserver(([entry]) => {
+    if(entry.isIntersecting) nav.classList.add('visible');
+    else nav.classList.remove('visible');
+  }, { threshold: 0.05 });
+  obs.observe(app);
+})();
 
 // ─────────────────────────────────────
 // SLIDER HELPERS
