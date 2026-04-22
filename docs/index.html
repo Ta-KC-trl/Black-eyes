@@ -553,17 +553,20 @@ window.addEventListener('resize',()=>{
 });
 
 // ─────────────────────────────────────
-// BOTTOM NAV — show only after scrolling into #app
+// BOTTOM NAV — show only after hero is fully scrolled past
 // ─────────────────────────────────────
 (function(){
-  const nav = document.querySelector('.bottom-nav');
-  const app = document.getElementById('app');
-  if(!nav || !app) return;
-  const obs = new IntersectionObserver(([entry]) => {
-    if(entry.isIntersecting) nav.classList.add('visible');
-    else nav.classList.remove('visible');
-  }, { threshold: 0.05 });
-  obs.observe(app);
+  const nav  = document.querySelector('.bottom-nav');
+  const hero = document.getElementById('hero');
+  if(!nav || !hero) return;
+  function syncNav(){
+    // show when scrolled at least 85% through the hero section
+    const threshold = hero.offsetHeight * 0.85;
+    if(window.scrollY >= threshold) nav.classList.add('visible');
+    else                            nav.classList.remove('visible');
+  }
+  window.addEventListener('scroll', syncNav, { passive: true });
+  syncNav(); // run once on load — scrollY=0 so stays hidden
 })();
 
 // ─────────────────────────────────────
