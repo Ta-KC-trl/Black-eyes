@@ -69,10 +69,15 @@ def _run_faces(frame_bgr, tolerance):
 
     known_enc, known_meta = [], []
     for p in db.values():
-        enc = p.get("encoding")
-        if enc is not None and len(enc) == 128:
-            known_enc.append(np.array(enc))
-            known_meta.append({"name": p["name"], "id": p["id"]})
+        encs = p.get("encodings") or []
+        if not encs:
+            e = p.get("encoding")
+            if e is not None and len(e) == 128:
+                encs = [e]
+        for e in encs:
+            if len(e) == 128:
+                known_enc.append(np.array(e))
+                known_meta.append({"name": p["name"], "id": p["id"]})
 
     h, w = frame_bgr.shape[:2]
     small = cv2.resize(frame_bgr, (int(w * HOG_SCALE), int(h * HOG_SCALE)))
@@ -182,6 +187,28 @@ def register():
     if result == 0:
         return jsonify({"error": "ID already exists"}), 400
     return jsonify({"success": True})
+
+@app.route("/register_multi", methods=["POST"])
+def register_multi():
+    body      = request.json
+    name      = body.get("name", "").strip()
+    person_id = body.get("id",   "").strip()
+    photos    = body.get("photos", [])
+    if not name or not person_id or not photos:
+        return jsonify({"error": "Missing fields"}), 400
+
+    images_rgb = []
+    for photo_b64 in photos:
+        frame_bgr = _decode(photo_b64)
+        images_rgb.append(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+
+    from utils import submitNewMulti
+    result = submitNewMulti(name, person_id, images_rgb)
+    if result == -1:
+        return jsonify({"error": "No face detected in any captured frame — ensure good lighting"}), 400
+    if result == 0:
+        return jsonify({"error": "ID already exists"}), 400
+    return jsonify({"success": True, "angles": len(photos)})
 
 @app.route("/unregister/<person_id>", methods=["DELETE"])
 def unregister(person_id):

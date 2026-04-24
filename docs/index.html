@@ -244,6 +244,22 @@
     .alert.success { background:#00ffaa06; border:1px solid var(--green-border); color:var(--green); }
     .alert.error   { background:#ff444406; border:1px solid #ff444433; color:var(--red); }
     .alert.hidden  { display:none; }
+    .alert.info    { background:#001a4406; border:1px solid #0055aa33; color:#6aafff; }
+
+    /* ── Guided multi-angle scan ── */
+    .scan-progress { display:flex; gap:10px; justify-content:center; margin:10px 0 14px; }
+    .scan-dot { width:14px; height:14px; border-radius:50%; border:2px solid var(--muted); transition:all .3s ease; }
+    .scan-dot.done { background:var(--green); border-color:var(--green); box-shadow:0 0 6px rgba(0,255,170,.4); }
+    .scan-dot.active { border-color:var(--green); animation:blink 1s infinite; }
+    .scan-cam-box { position:relative; width:100%; padding-top:75%; background:#050b18; border:1px solid #0f2a4a; border-radius:6px; overflow:hidden; }
+    .scan-cam-box video { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:6px; }
+    .scan-face-oval { position:absolute; top:50%; left:50%; transform:translate(-50%,-55%); width:52%; height:82%; border:2px solid rgba(0,255,170,.55); border-radius:50%; pointer-events:none; box-shadow:0 0 14px rgba(0,255,170,.12) inset; }
+    .scan-dir-bar { background:rgba(0,255,170,.04); border:1px solid var(--green-border); border-radius:4px; padding:10px 14px; text-align:center; margin:10px 0 0; }
+    .scan-dir-arrow { font-size:24px; line-height:1; margin-bottom:4px; }
+    .scan-dir-label { font-family:'Rajdhani',sans-serif; font-size:18px; font-weight:700; color:var(--green); letter-spacing:3px; }
+    .scan-dir-hint { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--muted); letter-spacing:2px; margin-top:3px; }
+    .scan-cd-wrap { height:3px; background:var(--dim); border-radius:2px; margin-top:10px; overflow:hidden; }
+    .scan-cd-fill { height:100%; width:100%; background:var(--green); }
 
     /* model loading banner */
     #model-banner { position:fixed; bottom:20px; right:20px; z-index:100; background:var(--active-bg); border:1px solid var(--border); border-radius:4px; padding:12px 18px; font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; transition:opacity .5s; }
@@ -414,7 +430,8 @@
           <label class="form-label">Image Source</label>
           <div style="display:flex;gap:8px;margin-bottom:10px">
             <button class="tab active" id="src-upload-btn" onclick="switchImgSrc('upload')" style="flex:1;padding:8px">Upload File</button>
-            <button class="tab" id="src-webcam-btn" onclick="switchImgSrc('webcam')" style="flex:1;padding:8px">Use Webcam</button>
+            <button class="tab" id="src-webcam-btn" onclick="switchImgSrc('webcam')" style="flex:1;padding:8px">Quick Capture</button>
+            <button class="tab" id="src-scan-btn" onclick="switchImgSrc('scan')" style="flex:1;padding:8px">Guided Scan</button>
           </div>
 
           <!-- Upload mode -->
@@ -436,6 +453,29 @@
                 <button class="btn-submit" id="reg-cam-start" onclick="startRegCam()" style="flex:1;padding:8px 0;font-size:12px">START CAM</button>
                 <button class="btn-submit" id="reg-cam-capture" onclick="captureRegFrame()" style="flex:1;padding:8px 0;font-size:12px;display:none">CAPTURE</button>
                 <button class="btn-delete" id="reg-cam-stop" onclick="stopRegCam()" style="flex:1;padding:8px 0;font-size:12px;display:none">STOP</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Guided multi-angle scan panel -->
+          <div id="reg-scan-panel" style="display:none">
+            <div class="scan-progress" id="scan-progress"></div>
+            <div style="max-width:380px;margin:0 auto">
+              <div class="scan-cam-box">
+                <video id="scan-cam" autoplay playsinline muted></video>
+                <div class="scan-face-oval"></div>
+              </div>
+              <div class="scan-dir-bar">
+                <div class="scan-dir-arrow" id="scan-dir-arrow">●</div>
+                <div class="scan-dir-label" id="scan-dir-label">READY</div>
+                <div class="scan-dir-hint" id="scan-dir-hint">Press START SCAN to begin guided enrollment</div>
+                <div class="scan-cd-wrap" id="scan-cd-wrap" style="display:none">
+                  <div class="scan-cd-fill" id="scan-cd-fill"></div>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="btn-submit" id="scan-start-btn" onclick="startGuidedScan()" style="flex:1;padding:9px 0;font-size:12px;letter-spacing:2px">START SCAN</button>
+                <button class="btn-delete" id="scan-stop-btn" onclick="cancelGuidedScan()" style="flex:1;padding:9px 0;font-size:12px;letter-spacing:2px;display:none">CANCEL</button>
               </div>
             </div>
           </div>
@@ -681,11 +721,15 @@ function switchImgSrc(mode){
   regImgSrc=mode;
   document.getElementById('reg-upload-panel').style.display=mode==='upload'?'block':'none';
   document.getElementById('reg-webcam-panel').style.display=mode==='webcam'?'block':'none';
+  document.getElementById('reg-scan-panel').style.display=mode==='scan'?'block':'none';
   document.getElementById('src-upload-btn').classList.toggle('active',mode==='upload');
   document.getElementById('src-webcam-btn').classList.toggle('active',mode==='webcam');
+  document.getElementById('src-scan-btn').classList.toggle('active',mode==='scan');
   regCapturedDataUrl=null;
   document.getElementById('reg-preview').style.display='none';
-  if(mode==='upload') stopRegCam();
+  if(mode!=='webcam') stopRegCam();
+  if(mode!=='scan') cancelGuidedScan();
+  if(mode==='scan') _initScanDots();
 }
 
 async function startRegCam(){
@@ -738,6 +782,27 @@ async function registerPerson(){
   alertEl.className = 'alert hidden';
   if(!name||!id){ showAlert(alertEl,'error','Fill in Name and ID.'); return; }
 
+  // ── Guided scan path ──────────────────────────────────────────────────────
+  if(regImgSrc==='scan'){
+    if(!scanFrames.length){ showAlert(alertEl,'error','Complete the guided scan first.'); return; }
+    showAlert(alertEl,'info',`Registering ${scanFrames.length} angle(s)…`);
+    try {
+      const resp = await fetch(`${API}/register_multi`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({name, id, photos: scanFrames})
+      });
+      const data = await resp.json();
+      if(!resp.ok){ showAlert(alertEl,'error', data.error||'Registration failed.'); return; }
+      showAlert(alertEl,'success',`Biometric profile enrolled — ${data.angles} angles registered.`);
+      document.getElementById('reg-name').value='';
+      document.getElementById('reg-id').value='';
+      document.getElementById('reg-preview').style.display='none';
+      cancelGuidedScan();
+    } catch(e){ showAlert(alertEl,'error','Backend offline — start api.py'); }
+    return;
+  }
+
+  // ── Single photo path ─────────────────────────────────────────────────────
   let photoDataUrl = null;
   if(regImgSrc==='webcam'){
     if(!regCapturedDataUrl){ showAlert(alertEl,'error','Capture a frame from webcam first.'); return; }
@@ -751,8 +816,7 @@ async function registerPerson(){
   showAlert(alertEl,'info','Processing…');
   try {
     const resp = await fetch(`${API}/register`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({name, id, photo: photoDataUrl})
     });
     const data = await resp.json();
@@ -782,7 +846,113 @@ async function deletePerson(){
 
 function showAlert(el, type, msg){
   el.className=`alert ${type}`; el.textContent=msg;
-  setTimeout(()=>el.className='alert hidden', 4000);
+  if(type!=='info') setTimeout(()=>el.className='alert hidden', 4000);
+}
+
+// ─────────────────────────────────────
+// GUIDED MULTI-ANGLE SCAN
+// ─────────────────────────────────────
+const SCAN_ANGLES = [
+  { label:'FACE FORWARD',    arrow:'●', hint:'Look directly at the camera' },
+  { label:'TURN HEAD LEFT',  arrow:'◀', hint:'Slowly turn your head to the left' },
+  { label:'TURN HEAD RIGHT', arrow:'▶', hint:'Slowly turn your head to the right' },
+  { label:'TILT HEAD UP',    arrow:'▲', hint:'Tilt your head slightly upward' },
+  { label:'TILT HEAD DOWN',  arrow:'▼', hint:'Tilt your head slightly downward' },
+];
+const SCAN_HOLD_MS = 2500;
+
+let scanStream = null;
+let scanFrames = [];
+let scanStep   = 0;
+let scanActive = false;
+let scanTimer  = null;
+
+function _initScanDots(){
+  document.getElementById('scan-progress').innerHTML =
+    SCAN_ANGLES.map((_,i)=>`<div class="scan-dot" id="scan-dot-${i}"></div>`).join('');
+}
+
+async function startGuidedScan(){
+  if(scanActive) return;
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({video:{width:640,height:480},audio:false});
+    document.getElementById('scan-cam').srcObject = scanStream;
+  } catch(e){ alert('Camera access denied: '+e.message); return; }
+
+  scanFrames = []; scanStep = 0; scanActive = true;
+  document.getElementById('scan-start-btn').style.display = 'none';
+  document.getElementById('scan-stop-btn').style.display  = 'block';
+  document.getElementById('scan-cd-wrap').style.display   = 'block';
+  _initScanDots();
+  _runScanStep();
+}
+
+function _runScanStep(){
+  if(!scanActive || scanStep >= SCAN_ANGLES.length){ _finalizeScan(); return; }
+  const a = SCAN_ANGLES[scanStep];
+  document.getElementById('scan-dir-arrow').textContent = a.arrow;
+  document.getElementById('scan-dir-label').textContent = a.label;
+  document.getElementById('scan-dir-hint').textContent  = a.hint;
+
+  document.querySelectorAll('.scan-dot').forEach((d,i)=>{
+    d.className = 'scan-dot' + (i < scanStep ? ' done' : i === scanStep ? ' active' : '');
+  });
+
+  // animate countdown bar
+  const fill = document.getElementById('scan-cd-fill');
+  fill.style.transition = 'none'; fill.style.width = '100%';
+  requestAnimationFrame(()=>{
+    fill.style.transition = `width ${SCAN_HOLD_MS}ms linear`;
+    fill.style.width = '0%';
+  });
+
+  scanTimer = setTimeout(()=>{
+    const v = document.getElementById('scan-cam');
+    const c = document.createElement('canvas');
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    scanFrames.push(c.toDataURL('image/jpeg', 0.92));
+    const dot = document.getElementById(`scan-dot-${scanStep}`);
+    if(dot) dot.className = 'scan-dot done';
+    scanStep++;
+    _runScanStep();
+  }, SCAN_HOLD_MS);
+}
+
+function _finalizeScan(){
+  _stopScanStream();
+  document.getElementById('scan-dir-arrow').textContent = '✓';
+  document.getElementById('scan-dir-label').textContent = 'SCAN COMPLETE';
+  document.getElementById('scan-dir-hint').textContent  = `${scanFrames.length} angles captured — press REGISTER`;
+  document.getElementById('scan-cd-wrap').style.display  = 'none';
+  document.getElementById('scan-start-btn').textContent  = 'RESCAN';
+  document.getElementById('scan-start-btn').style.display = 'block';
+  document.getElementById('scan-stop-btn').style.display  = 'none';
+  if(scanFrames.length){
+    const prev = document.getElementById('reg-preview');
+    prev.src = scanFrames[0]; prev.style.display = 'block';
+  }
+  document.querySelectorAll('.scan-dot').forEach(d=>d.className='scan-dot done');
+}
+
+function cancelGuidedScan(){
+  if(scanTimer){ clearTimeout(scanTimer); scanTimer = null; }
+  _stopScanStream();
+  scanFrames = []; scanStep = 0; scanActive = false;
+  document.getElementById('scan-dir-arrow').textContent  = '●';
+  document.getElementById('scan-dir-label').textContent  = 'READY';
+  document.getElementById('scan-dir-hint').textContent   = 'Press START SCAN to begin guided enrollment';
+  document.getElementById('scan-cd-wrap').style.display  = 'none';
+  document.getElementById('scan-start-btn').textContent  = 'START SCAN';
+  document.getElementById('scan-start-btn').style.display = 'block';
+  document.getElementById('scan-stop-btn').style.display  = 'none';
+  _initScanDots();
+}
+
+function _stopScanStream(){
+  scanActive = false;
+  if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream = null; }
+  document.getElementById('scan-cam').srcObject = null;
 }
 
 // ─────────────────────────────────────

@@ -79,10 +79,15 @@ def recognize(image, tolerance=0.5):
         known_encodings = []
         known_metadata  = []
         for p in database.values():
-            enc = p.get("encoding")
-            if enc is not None and len(enc) == 128:
-                known_encodings.append(enc)
-                known_metadata.append((p["name"], p["id"]))
+            encs = p.get("encodings") or []
+            if not encs:
+                e = p.get("encoding")
+                if e is not None and len(e) == 128:
+                    encs = [e]
+            for e in encs:
+                if len(e) == 128:
+                    known_encodings.append(e)
+                    known_metadata.append((p["name"], p["id"]))
 
         first_face = True
         for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
@@ -180,3 +185,49 @@ def deleteOne(person_id):
             del database[key]; _save_database(database)
             return True
     return False
+
+def submitNewMulti(name, person_id, images_rgb):
+    """Register a person from multiple angle images, storing all face encodings."""
+    database = get_database()
+    existing_ids = [database[i]["id"] for i in database]
+    if person_id in existing_ids:
+        return 0
+
+    encodings = []
+    primary_image = None
+
+    for img in images_rgb:
+        if FACE_RECOG_AVAILABLE:
+            locs = face_recognition.face_locations(img)
+            if locs:
+                enc = face_recognition.face_encodings(img, known_face_locations=[locs[0]])[0]
+                encodings.append(enc.tolist())
+                if primary_image is None:
+                    primary_image = img
+        else:
+            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+            faces = _face_cascade.detectMultiScale(gray, 1.1, 5)
+            if len(faces) > 0:
+                x, y, w, h = faces[0]
+                face_roi = cv2.resize(img[y:y+h, x:x+w], (64, 64))
+                enc = face_roi.astype(np.float32).flatten() / 255.0
+                encodings.append(enc.tolist())
+                if primary_image is None:
+                    primary_image = img
+
+    if not encodings:
+        return -1
+
+    idx = len(database)
+    while idx in database:
+        idx += 1
+
+    database[idx] = {
+        "image": primary_image,
+        "id": person_id,
+        "name": name,
+        "encoding": encodings[0],
+        "encodings": encodings,
+    }
+    _save_database(database)
+    return True
