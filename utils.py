@@ -79,10 +79,15 @@ def recognize(image, tolerance=0.5):
         known_encodings = []
         known_metadata  = []
         for p in database.values():
-            enc = p.get("encoding")
-            if enc is not None and len(enc) == 128:
-                known_encodings.append(enc)
-                known_metadata.append((p["name"], p["id"]))
+            encs = p.get("encodings") or []
+            if not encs:
+                e = p.get("encoding")
+                if e is not None and len(e) == 128:
+                    encs = [e]
+            for e in encs:
+                if len(e) == 128:
+                    known_encodings.append(e)
+                    known_metadata.append((p["name"], p["id"]))
 
         first_face = True
         for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
@@ -180,3 +185,89 @@ def deleteOne(person_id):
             del database[key]; _save_database(database)
             return True
     return False
+
+_profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_profileface.xml")
+
+def _robust_face_locs(img_rgb):
+    """Multi-scale HOG + frontal/profile Haar — handles all 5 guided-scan poses."""
+    locs = []
+    if FACE_RECOG_AVAILABLE:
+        # HOG at full scale then 75% (catches different distances)
+        for scale in (1.0, 0.75):
+            if scale == 1.0:
+                locs = face_recognition.face_locations(img_rgb, model="hog", number_of_times_to_upsample=1)
+            else:
+                h, w = img_rgb.shape[:2]
+                small = cv2.resize(img_rgb, (int(w * scale), int(h * scale)))
+                raw = face_recognition.face_locations(small, model="hog", number_of_times_to_upsample=1)
+                inv = 1.0 / scale
+                locs = [(int(t*inv), int(r*inv), int(b*inv), int(l*inv)) for (t, r, b, l) in raw]
+            if locs:
+                return locs
+
+    # Frontal Haar fallback
+    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+    W = gray.shape[1]
+    dets = _face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(35, 35))
+    if len(dets):
+        return [(y, x+fw, y+fh, x) for (x, y, fw, fh) in dets]
+
+    # Left-profile Haar
+    dets = _profile_cascade.detectMultiScale(gray, 1.1, 3, minSize=(35, 35))
+    if len(dets):
+        return [(y, x+fw, y+fh, x) for (x, y, fw, fh) in dets]
+
+    # Right-profile Haar (flip image, map coords back)
+    gray_f = cv2.flip(gray, 1)
+    dets = _profile_cascade.detectMultiScale(gray_f, 1.1, 3, minSize=(35, 35))
+    if len(dets):
+        return [(y, W-x, y+fh, W-x-fw) for (x, y, fw, fh) in dets]
+
+    return []
+
+def submitNewMulti(name, person_id, images_rgb):
+    """Register a person from multiple angle images, storing all face encodings."""
+    database = get_database()
+    existing_ids = [database[i]["id"] for i in database]
+    if person_id in existing_ids:
+        return 0
+
+    encodings = []
+    primary_image = None
+
+    for img in images_rgb:
+        locs = _robust_face_locs(img)
+        if not locs:
+            continue
+        if FACE_RECOG_AVAILABLE:
+            try:
+                enc = face_recognition.face_encodings(img, known_face_locations=[locs[0]])[0]
+                encodings.append(enc.tolist())
+                if primary_image is None:
+                    primary_image = img
+            except Exception:
+                pass
+        else:
+            top, right, bottom, left = locs[0]
+            face_roi = cv2.resize(img[top:bottom, left:right], (64, 64))
+            enc = face_roi.astype(np.float32).flatten() / 255.0
+            encodings.append(enc.tolist())
+            if primary_image is None:
+                primary_image = img
+
+    if not encodings:
+        return -1
+
+    idx = len(database)
+    while idx in database:
+        idx += 1
+
+    database[idx] = {
+        "image": primary_image,
+        "id": person_id,
+        "name": name,
+        "encoding": encodings[0],
+        "encodings": encodings,
+    }
+    _save_database(database)
+    return True

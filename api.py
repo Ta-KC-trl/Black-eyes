@@ -18,7 +18,7 @@ with open(os.path.join(_BASE, "config.yaml")) as _f:
     _cfg = yaml.safe_load(_f)
 
 FACE_TOLERANCE = _cfg["DETECTION"].get("FACE_TOLERANCE", 0.4)
-ANOMALY_CONF   = _cfg["DETECTION"].get("ANOMALY_TOLERANCE", 0.5)
+ANOMALY_CONF   = _cfg["DETECTION"].get("ANOMALY_TOLERANCE", 0.65)
 
 # ── YOLO ──────────────────────────────────────────────────────────────────────
 from ultralytics import YOLO
@@ -57,35 +57,78 @@ def status():
         "yolo_classes": list(yolo.names.values()),
     })
 
-HOG_SCALE = 0.5        # downscale before HOG — faster + fewer false positives
-MIN_FACE_PX = 60       # ignore detections smaller than this (pixels, original scale)
+MIN_FACE_PX = 35       # ignore detections smaller than this (pixels, original scale)
+
+# Haar cascades — frontal + profile for side-view poses
+_haar         = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+_haar_profile = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_profileface.xml")
+
+def _hog_locs(frame_bgr, scale, upsample=1):
+    """Try HOG at a given scale; return locations mapped back to original size."""
+    h, w = frame_bgr.shape[:2]
+    small = cv2.resize(frame_bgr, (int(w * scale), int(h * scale)))
+    rgb_s = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+    raw   = face_recognition.face_locations(rgb_s, model="hog",
+                                            number_of_times_to_upsample=upsample)
+    inv = 1.0 / scale
+    return [(int(t*inv), int(r*inv), int(b*inv), int(l*inv))
+            for (t, r, b, l) in raw
+            if (b - t) * inv >= MIN_FACE_PX and (r - l) * inv >= MIN_FACE_PX]
+
+def _haar_locs(frame_bgr):
+    """Frontal + profile Haar cascades — handles straight-on and side-view poses."""
+    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+    W    = gray.shape[1]
+    locs = []
+
+    # Frontal detection
+    dets = _haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(MIN_FACE_PX, MIN_FACE_PX))
+    if len(dets):
+        for (x, y, fw, fh) in dets:
+            locs.append((y, x + fw, y + fh, x))
+
+    # Left-profile detection
+    if not locs:
+        dets = _haar_profile.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=3, minSize=(MIN_FACE_PX, MIN_FACE_PX))
+        if len(dets):
+            for (x, y, fw, fh) in dets:
+                locs.append((y, x + fw, y + fh, x))
+
+    # Right-profile detection (flip then map coords back)
+    if not locs:
+        gray_f = cv2.flip(gray, 1)
+        dets = _haar_profile.detectMultiScale(gray_f, scaleFactor=1.1, minNeighbors=3, minSize=(MIN_FACE_PX, MIN_FACE_PX))
+        if len(dets):
+            for (x, y, fw, fh) in dets:
+                locs.append((y, W - x, y + fh, W - x - fw))
+
+    return locs
 
 def _run_faces(frame_bgr, tolerance):
-    """Run HOG face detection on a downscaled copy, map boxes back to original size."""
+    """Multi-scale HOG + Haar fallback face detection."""
     if not FACE_RECOG:
         return []
     from utils import get_database_cached
     db = get_database_cached()
+    h, w = frame_bgr.shape[:2]
 
     known_enc, known_meta = [], []
     for p in db.values():
-        enc = p.get("encoding")
-        if enc is not None and len(enc) == 128:
-            known_enc.append(np.array(enc))
-            known_meta.append({"name": p["name"], "id": p["id"]})
+        encs = p.get("encodings") or []
+        if not encs:
+            e = p.get("encoding")
+            if e is not None and len(e) == 128:
+                encs = [e]
+        for e in encs:
+            if len(e) == 128:
+                known_enc.append(np.array(e))
+                known_meta.append({"name": p["name"], "id": p["id"]})
 
-    h, w = frame_bgr.shape[:2]
-    small = cv2.resize(frame_bgr, (int(w * HOG_SCALE), int(h * HOG_SCALE)))
-    rgb_small = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
-    locs_small = face_recognition.face_locations(rgb_small, model="hog", number_of_times_to_upsample=1)
-
-    # scale boxes back to original size and filter tiny detections
-    scale = 1.0 / HOG_SCALE
-    locs = []
-    for (t, r, b, l) in locs_small:
-        t2, r2, b2, l2 = int(t*scale), int(r*scale), int(b*scale), int(l*scale)
-        if (b2 - t2) >= MIN_FACE_PX and (r2 - l2) >= MIN_FACE_PX:
-            locs.append((t2, r2, b2, l2))
+    # Try HOG at 75%, then 50% (catches both distant and close-up faces),
+    # then fall back to Haar which handles large frontal faces best
+    locs = (_hog_locs(frame_bgr, 0.75, upsample=1)
+            or _hog_locs(frame_bgr, 0.5,  upsample=1)
+            or _haar_locs(frame_bgr))
 
     rgb_full = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
     encs = face_recognition.face_encodings(rgb_full, locs)
@@ -125,15 +168,21 @@ def detect():
     import concurrent.futures
     body         = request.json
     frame_bgr    = _decode(body["frame"])
+    if frame_bgr is None:
+        return jsonify({"faces": [], "anomalies": []})
     tolerance    = float(body.get("tolerance",    FACE_TOLERANCE))
     anomaly_conf = float(body.get("anomaly_conf", ANOMALY_CONF))
+    skip_yolo    = bool(body.get("skip_yolo", False))
 
-    # Run face detection + YOLO in parallel threads
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-        f_faces = ex.submit(_run_faces, frame_bgr, tolerance)
-        f_yolo  = ex.submit(_run_yolo,  frame_bgr, anomaly_conf)
-        faces     = f_faces.result()
-        anomalies = f_yolo.result()
+    if skip_yolo:
+        faces     = _run_faces(frame_bgr, tolerance)
+        anomalies = []
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            f_faces = ex.submit(_run_faces, frame_bgr, tolerance)
+            f_yolo  = ex.submit(_run_yolo,  frame_bgr, anomaly_conf)
+            faces     = f_faces.result()
+            anomalies = f_yolo.result()
 
     return jsonify({"faces": faces, "anomalies": anomalies})
 
@@ -182,6 +231,28 @@ def register():
     if result == 0:
         return jsonify({"error": "ID already exists"}), 400
     return jsonify({"success": True})
+
+@app.route("/register_multi", methods=["POST"])
+def register_multi():
+    body      = request.json
+    name      = body.get("name", "").strip()
+    person_id = body.get("id",   "").strip()
+    photos    = body.get("photos", [])
+    if not name or not person_id or not photos:
+        return jsonify({"error": "Missing fields"}), 400
+
+    images_rgb = []
+    for photo_b64 in photos:
+        frame_bgr = _decode(photo_b64)
+        images_rgb.append(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+
+    from utils import submitNewMulti
+    result = submitNewMulti(name, person_id, images_rgb)
+    if result == -1:
+        return jsonify({"error": "No face detected in any captured frame — ensure good lighting"}), 400
+    if result == 0:
+        return jsonify({"error": "ID already exists"}), 400
+    return jsonify({"success": True, "angles": len(photos)})
 
 @app.route("/unregister/<person_id>", methods=["DELETE"])
 def unregister(person_id):
